@@ -8,12 +8,19 @@ fn surface_kind(model : Model) -> String {
 }
 
 ///|
-fn surface_command(kind : String, emit : @rabbita.Emit[Msg]) -> @rabbita.Cmd {
+fn surface_command(
+  kind : String,
+  document_file : String,
+  emit : @rabbita.Emit[Msg],
+) -> @rabbita.Cmd {
   @cmd.custom_cmd(
     scheduler => {
-      install_surface_interactions("document-surface", kind, selection => {
-        scheduler.add(emit(SelectionChanged(selection)))
-      })
+      install_surface_interactions(
+        "document-surface",
+        kind,
+        document_file,
+        selection => scheduler.add(emit(SelectionChanged(selection))),
+      )
     },
     kind=@cmd.after_render,
   )
@@ -68,6 +75,7 @@ fn update(
                 ..model,
                 kind: Some(document.kind),
                 file_name: document.name,
+                document_file: document.file,
                 surface_html: document.surface_html,
                 item_count: document.item_count,
                 warning: document.warning,
@@ -78,7 +86,7 @@ fn update(
               (
                 next,
                 @rabbita.batch([
-                  surface_command(surface_kind(next), emit),
+                  surface_command(surface_kind(next), next.document_file, emit),
                   visual_command(next),
                 ]),
               )
@@ -111,6 +119,7 @@ fn update(
                 ..model,
                 kind: Some(document.kind),
                 file_name: document.name,
+                document_file: document.file,
                 surface_html: document.surface_html,
                 item_count: document.item_count,
                 warning: document.warning,
@@ -121,7 +130,7 @@ fn update(
               (
                 next,
                 @rabbita.batch([
-                  surface_command(surface_kind(next), emit),
+                  surface_command(surface_kind(next), next.document_file, emit),
                   visual_command(next),
                 ]),
               )

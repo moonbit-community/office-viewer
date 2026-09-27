@@ -16,6 +16,8 @@ not change the meaning of existing fields.
 ```json
 {
   "schema": "office.selection.v1",
+  "file": "/mock/office/report.docx",
+  "format": "docx",
   "kind": "word",
   "text": "selected text",
   "anchors": [
@@ -23,6 +25,8 @@ not change the meaning of existing fields.
       "source_id": "word/document.xml#/w:body/w:p[3]/w:r[2]",
       "part": "word/document.xml",
       "path": "/w:body/w:p[3]/w:r[2]",
+      "selector": "/docx/body/p[3]/r[2]",
+      "stability": "snapshot-relative",
       "start_utf16": 4,
       "end_utf16": 17,
       "page": 2
@@ -42,9 +46,13 @@ Excel uses cell selection rather than text selection:
 ```json
 {
   "schema": "office.selection.v1",
+  "file": "/mock/office/budget.xlsx",
+  "format": "xlsx",
   "kind": "excel",
   "sheet": "Sheet1",
   "range": "B4:D9",
+  "selector": "/xlsx/sheet[name=\"Sheet1\"]/range[B4:D9]",
+  "stability": "snapshot-relative",
   "cells": [
     { "address": "B4", "row": 4, "column": 2, "text": "..." }
   ]
@@ -77,7 +85,11 @@ layout engine instead of being treated as selected content.
 
 ## OpenSeek handoff
 
-OpenSeek should receive the envelope together with the document name and a
-renderer capability report. It can quote `text` immediately and use `anchors`
-to request richer context later. This keeps Agent behavior independent from
-the current SVG/HTML implementation.
+OpenSeek should receive the envelope together with the `file` path and a
+host-owned document identity when one is available. The standalone demo uses a
+`/mock/office/...` path; the OpenSeek host replaces it with the path it passes
+to `office`. `selector` follows `office.selector/1`, while `source_id` and
+`path` remain renderer provenance for debugging. OpenSeek can quote `text`
+immediately and use the canonical selector to request richer context through
+`office get`, `office text`, `office outline`, or `office query` later. This
+keeps Agent behavior independent from the current SVG/HTML implementation.

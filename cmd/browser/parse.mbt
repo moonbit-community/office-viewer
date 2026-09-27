@@ -10,6 +10,13 @@ fn document_kind(name : String) -> DocumentKind? {
   }
 }
 
+/// The standalone browser has no host-owned document handle yet. Keep the
+/// office CLI's `file` shape visible in the selection envelope with a stable
+/// demo-only path; OpenSeek will replace this at the integration boundary.
+fn mock_document_file(name : String) -> String {
+  "/mock/office/" + name
+}
+
 ///|
 fn extract_html_body(document : String) -> String {
   let style = match (document.find("<style>"), document.find("</style>")) {
@@ -51,6 +58,7 @@ fn parse_document(payload : FilePayload) -> Result[LoadedDocument, String] {
         Ok({
           kind,
           name: payload.name,
+          file: mock_document_file(payload.name),
           surface_html: word_surface(pages),
           item_count: pages.length(),
           warning: "Word layout is read-only. Text selections retain source paths for Agent context.",
@@ -69,6 +77,7 @@ fn parse_document(payload : FilePayload) -> Result[LoadedDocument, String] {
         Ok({
           kind,
           name: payload.name,
+          file: mock_document_file(payload.name),
           surface_html: "<div class=\"sheet-document\">" +
           extract_html_body(rendered) +
           "</div>",

@@ -14,6 +14,7 @@ struct FilePayload {
 struct LoadedDocument {
   kind : DocumentKind
   name : String
+  file : String
   surface_html : String
   item_count : Int
   warning : String
@@ -23,6 +24,7 @@ struct LoadedDocument {
 struct Model {
   kind : DocumentKind?
   file_name : String
+  document_file : String
   surface_html : String
   item_count : Int
   warning : String
@@ -40,6 +42,7 @@ fn initial_model() -> Model {
   {
     kind: None,
     file_name: "",
+    document_file: "",
     surface_html: "",
     item_count: 0,
     warning: "",

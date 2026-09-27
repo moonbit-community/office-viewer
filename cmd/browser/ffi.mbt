@@ -160,9 +160,10 @@ extern "js" fn copy_to_clipboard(text : String) =
 extern "js" fn install_surface_interactions(
   surface_id : String,
   kind : String,
+  document_file : String,
   on_selection : (String) -> Unit,
 ) =
-  #| (id, kind, onSelection) => {
+  #| (id, kind, documentFile, onSelection) => {
   #|   const host = document.getElementById(id);
   #|   if (!host) return;
   #|   if (host.__officeViewerCleanup) host.__officeViewerCleanup();
@@ -181,6 +182,7 @@ extern "js" fn install_surface_interactions(
   #|     }
   #|     return name;
   #|   };
+  #|   const documentFormat = kind === "word" ? "docx" : "xlsx";
   #|   const jsonSelection = (value) => onSelection(JSON.stringify(value, null, 2));
   #|   const nodeIsInside = (root, node) => root === node || root.contains(node);
   #|
@@ -239,7 +241,8 @@ extern "js" fn install_surface_interactions(
   #|       const id = fragment.dataset.sourceId || "";
   #|       const part = fragment.dataset.sourcePart || "";
   #|       const path = fragment.dataset.sourcePath || "";
-  #|       const key = `${id}|${part}|${path}|${page === null ? "" : page}`;
+  #|       const selector = fragment.dataset.sourceSelector || null;
+  #|       const key = `${id}|${part}|${path}|${selector || ""}|${page === null ? "" : page}`;
   #|       const previous = byKey.get(key);
   #|       if (previous) {
   #|         previous.start_utf16 = Math.min(previous.start_utf16, start);
@@ -249,6 +252,10 @@ extern "js" fn install_surface_interactions(
   #|           source_id: id,
   #|           part,
   #|           path,
+  #|           selector,
+  #|           stability: selector && selector.includes("[id=\"")
+  #|             ? "stable"
+  #|             : (selector ? "snapshot-relative" : "physical-only"),
   #|           start_utf16: start,
   #|           end_utf16: Math.min(sourceEnd, end),
   #|         };
@@ -264,6 +271,8 @@ extern "js" fn install_surface_interactions(
   #|     });
   #|     jsonSelection({
   #|       schema: "office.selection.v1",
+  #|       file: documentFile,
+  #|       format: documentFormat,
   #|       kind: "word",
   #|       text,
   #|       anchors,
@@ -344,9 +353,13 @@ extern "js" fn install_surface_interactions(
   #|     });
   #|     jsonSelection({
   #|       schema: "office.selection.v1",
+  #|       file: documentFile,
+  #|       format: documentFormat,
   #|       kind: "excel",
   #|       sheet,
   #|       range: rangeStart === rangeEnd ? rangeStart : `${rangeStart}:${rangeEnd}`,
+  #|       selector: `/xlsx/sheet[name=${JSON.stringify(sheet)}]/range[${rangeStart === rangeEnd ? rangeStart : `${rangeStart}:${rangeEnd}`}]`,
+  #|       stability: "snapshot-relative",
   #|       cells,
   #|     });
   #|   };

@@ -5,6 +5,10 @@ test "document kind follows office file extensions" {
   assert_true(document_kind("photo.pdf") is None)
 }
 
+test "standalone selections use an explicit mock office file path" {
+  assert_eq(mock_document_file("report.docx"), "/mock/office/report.docx")
+}
+
 ///|
 test "spreadsheet body extraction keeps renderer styles" {
   let html = "<style>.s1{font-weight:bold}</style><body><h1>Book</h1></body>"
