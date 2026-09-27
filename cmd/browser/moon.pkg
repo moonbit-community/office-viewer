@@ -4,11 +4,8 @@ import {
   "moonbit-community/rabbita/html",
   "moonbit-community/rabbita/js",
   "moonbit-community/rabbita/cmd",
-  "moonbitlang/mbtexcel",
-  "moonbitlang/mbtexcel/xlsx2html",
   "moonbitlang/core/string",
-  "moonbitlang/pagelayout/docx",
-  "moonbitlang/pagelayout/svg",
+  "moonbit-community/office-viewer/viewer",
 }
 
 warnings = "-alert_experimental-alert_xss_vulnerable"

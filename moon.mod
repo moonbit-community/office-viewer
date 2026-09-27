@@ -1,9 +1,9 @@
-name = "local/office-viewer"
+name = "moonbit-community/office-viewer"
 
 version = "0.1.0"
 
 import {
-  "moonbit-community/rabbita@0.15.6",
+  "moonbit-community/rabbita@0.16.3",
   "moonbitlang/mbtexcel@0.2.0",
   "moonbitlang/pagelayout@0.2.0",
 }

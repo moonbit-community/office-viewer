@@ -36,6 +36,13 @@ cells. Both produce the versioned `office.selection.v1` JSON envelope shown in
 that envelope and can copy it through the browser clipboard for the later
 OpenSeek Agent conversation.
 
+The reusable surface lives in [`viewer/`](viewer/). Its renderer and Rabbita
+surface are host-neutral: a standalone host can provide browser file bytes,
+while OpenSeek can provide bytes and the real `office.mbt` file path from its
+native backend. The intended OpenSeek integration mounts this same JS/Rabbita
+surface inside the desktop frontend; it does not open a second webpage or
+iframe.
+
 The layout engines still have documented OOXML gaps, including some nested
 tables, content controls, tab-stop cases, and paragraph-level section breaks.
 Those need to be surfaced as structured provenance before claiming complete

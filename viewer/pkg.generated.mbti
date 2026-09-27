@@ -1,0 +1,55 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/office-viewer/viewer"
+
+import {
+  "moonbit-community/rabbita/cmd",
+  "moonbit-community/rabbita/html",
+}
+
+// Values
+pub fn document_kind(String) -> DocumentKind?
+
+pub fn interactions_command(SurfaceConfig, (String) -> @cmd.Cmd) -> @cmd.Cmd
+
+pub fn render_document(String, String, Bytes) -> Result[RenderedDocument, String]
+
+pub fn render_surface(SurfaceConfig) -> @html.Html
+
+pub fn visual_command(SurfaceConfig) -> @cmd.Cmd
+
+// Errors
+
+// Types and methods
+pub(all) enum DocumentKind {
+  Word
+  Excel
+} derive(Eq)
+pub fn DocumentKind::equal(Self, Self) -> Bool
+pub fn DocumentKind::not_equal(Self, Self) -> Bool
+
+pub(all) struct RenderedDocument {
+  kind : DocumentKind
+  name : String
+  file : String
+  surface_html : String
+  item_count : Int
+  warning : String
+} derive(Eq)
+pub fn RenderedDocument::equal(Self, Self) -> Bool
+pub fn RenderedDocument::not_equal(Self, Self) -> Bool
+
+pub(all) struct SurfaceConfig {
+  surface_id : String
+  kind : DocumentKind?
+  document_file : String
+  surface_html : String
+  zoom : Int
+  query : String
+  prefer_system_fonts : Bool
+} derive(Eq)
+pub fn SurfaceConfig::equal(Self, Self) -> Bool
+pub fn SurfaceConfig::not_equal(Self, Self) -> Bool
+
+// Type aliases
+
+// Traits

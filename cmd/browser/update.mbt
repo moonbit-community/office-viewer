@@ -1,42 +1,31 @@
 ///|
-fn surface_kind(model : Model) -> String {
-  match model.kind {
-    Some(Word) => "word"
-    Some(Excel) => "excel"
-    None => ""
-  }
-}
-
-///|
-fn surface_command(
-  kind : String,
-  document_file : String,
-  emit : @rabbita.Emit[Msg],
-) -> @rabbita.Cmd {
-  @cmd.custom_cmd(
-    scheduler => {
-      install_surface_interactions(
-        "document-surface",
-        kind,
-        document_file,
-        selection => scheduler.add(emit(SelectionChanged(selection))),
-      )
-    },
-    kind=@cmd.after_render,
-  )
+fn surface_command(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Cmd {
+  @viewer.interactions_command(surface_config(model), selection => {
+    emit(SelectionChanged(selection))
+  })
 }
 
 ///|
 fn visual_command(model : Model) -> @rabbita.Cmd {
-  @cmd.custom_cmd(
-    _ => {
-      set_surface_zoom("document-surface", model.zoom.to_double() / 100.0)
-      prepare_font_runtime("document-surface")
-      set_system_font_mode("document-surface", model.prefer_system_fonts)
-      apply_search("document-surface", model.query)
-    },
-    kind=@cmd.after_render,
-  )
+  @viewer.visual_command(surface_config(model))
+}
+
+///|
+fn surface_config(model : Model) -> @viewer.SurfaceConfig {
+  {
+    surface_id: "document-surface",
+    kind: model.kind.map(kind => {
+      match kind {
+        Word => @viewer.Word
+        Excel => @viewer.Excel
+      }
+    }),
+    document_file: model.document_file,
+    surface_html: model.surface_html,
+    zoom: model.zoom,
+    query: model.query,
+    prefer_system_fonts: model.prefer_system_fonts,
+  }
 }
 
 ///|
@@ -86,7 +75,7 @@ fn update(
               (
                 next,
                 @rabbita.batch([
-                  surface_command(surface_kind(next), next.document_file, emit),
+                  surface_command(next, emit),
                   visual_command(next),
                 ]),
               )
@@ -130,7 +119,7 @@ fn update(
               (
                 next,
                 @rabbita.batch([
-                  surface_command(surface_kind(next), next.document_file, emit),
+                  surface_command(next, emit),
                   visual_command(next),
                 ]),
               )

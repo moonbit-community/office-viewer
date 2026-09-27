@@ -23,34 +23,16 @@ fn surface_class(model : Model) -> String {
 }
 
 ///|
-fn empty_surface() -> Html {
-  div(class="surface-empty", [
-    div([
-      span(class="brand-mark", "Office Viewer"),
-      span("\nDrop a .docx or .xlsx file here, or use Open file to start."),
-    ]),
-  ])
-}
-
-///|
 fn surface(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
-  let content = if model.surface_html == "" {
-    empty_surface()
-  } else {
-    div(
-      id="document-surface",
-      class="surface",
-      attrs=@html.Attrs::build().inner_html(model.surface_html),
-      ([] : Array[Html]),
-    )
-  }
   let drop_attrs = @html.Attrs::build()
     .on_dragover(event => {
       event.prevent_default()
       @rabbita.none
     })
     .on_drop(event => emit(DropRequested(event)))
-  div(id="surface-wrap", class=surface_class(model), attrs=drop_attrs, [content])
+  div(id="surface-wrap", class=surface_class(model), attrs=drop_attrs, [
+    @viewer.render_surface(surface_config(model)),
+  ])
 }
 
 ///|

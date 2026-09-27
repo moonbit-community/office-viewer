@@ -6,8 +6,8 @@ the later OpenSeek Agent integration.
 ## Goals
 
 The viewer must preserve the native interaction of each document type while
-returning a stable, source-aware selection. Agent code should not parse SVG,
-HTML, or browser-specific selection objects.
+returning a bounded selection context. Agent code should not parse SVG, HTML,
+or browser-specific selection objects.
 
 The selection envelope is versioned and contains both the text the user saw
 and anchors back to the source document. A renderer may add fields, but it must
@@ -22,24 +22,26 @@ not change the meaning of existing fields.
   "text": "selected text",
   "anchors": [
     {
-      "source_id": "word/document.xml#/w:body/w:p[3]/w:r[2]",
-      "part": "word/document.xml",
-      "path": "/w:body/w:p[3]/w:r[2]",
-      "selector": "/docx/body/p[3]/r[2]",
-      "stability": "snapshot-relative",
+      "stability": "physical-only",
       "start_utf16": 4,
       "end_utf16": 17,
-      "page": 2
+      "page": 2,
+      "text": "selected text",
+      "rect": { "left": 120, "top": 240, "width": 84, "height": 16 }
     }
   ],
   "pages": [2]
 }
 ```
 
-Word continues to use browser-native text selection. The SVG emitter carries
-the source span on each text fragment, and the browser intersects the native
-`Range` with those fragments. A selection may contain multiple anchors when it
-crosses runs, paragraphs, tables, or pages.
+Word continues to use browser-native text selection. The browser intersects the
+native `Range` with positioned SVG text fragments and records the selected text,
+page number, UTF-16 span within each visual fragment, and a physical bounding
+rectangle. Clean upstream `pagelayout/svg` output does not carry OOXML
+provenance attributes, so the viewer omits `selector`, `path`, and source byte
+claims unless a future host supplies an explicit source map. A physical-only
+anchor is intentionally less powerful than a guessed selector and must be
+treated as such by the Agent.
 
 Excel uses cell selection rather than text selection:
 
@@ -59,29 +61,37 @@ Excel uses cell selection rather than text selection:
 }
 ```
 
-Every rendered Excel cell carries its worksheet name, address, row, and column
-in `data-*` attributes. Merged cells retain the anchor cell's address.
+The upstream `xlsx2html` output already carries worksheet sections and table
+structure but does not carry cell coordinates. The browser adds row, column,
+sheet, and A1 address attributes from the actual rendered table, accounting for
+rowspan and colspan. Merged cells retain the anchor cell's address. The emitted
+Excel selector therefore follows the canonical `/xlsx/sheet[name=...]/cell[...]`
+shape for one cell and `/xlsx/sheet[name=...]/range[...]` for a rectangle,
+matching `office.mbt`'s selector parser.
 
 ## Layers
 
 The implementation is deliberately split into three layers:
 
-1. The document layer reads OOXML and assigns stable source paths.
-2. The layout layer carries source spans through `RunInput`, `PlacedRun`, and
-   `GlyphRun` without changing pagination or coordinates.
-3. The browser layer converts native selection into the versioned envelope.
+1. The document layer reads OOXML and renders through the unmodified
+   `office.mbt` layout packages.
+2. The browser layer adds interaction metadata that can be proved from the
+   rendered DOM: Excel cell coordinates and Word physical selection context.
+3. The host receives the versioned envelope and can use canonical selectors
+   only where the renderer actually has one.
 
-The source span is local to the authored run and uses UTF-16 offsets, matching
-the DOM and JavaScript string model. It is not a byte offset into XML. Byte
-offsets can be added later for edit operations without changing this selection
-contract.
+Word fragment spans are local to the rendered DOM text node and use UTF-16
+offsets, matching the DOM and JavaScript string model. They are not byte
+offsets into XML and are not a substitute for a canonical selector. Byte or
+OOXML path metadata can be added later by a separate source-map-capable
+renderer without changing the selection envelope.
 
 ## Current milestone
 
-The first implementation covers body paragraphs, tables, and header/footer
-text runs, with SVG metadata, native Word selection, and Excel cell metadata.
-Nested tables, drawings, and other unsupported OOXML remain reported by the
-layout engine instead of being treated as selected content.
+The current implementation covers native Word text selection and Excel range
+selection over the rendered worksheet window. Nested tables, drawings, and
+other unsupported OOXML remain governed by the layout engine's existing
+diagnostics instead of being treated as selected content.
 
 ## OpenSeek handoff
 

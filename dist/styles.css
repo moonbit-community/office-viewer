@@ -237,17 +237,17 @@ button, input { font: inherit; }
 
 /* Opt-in local-font enhancement. Page coordinates still come from the
    bundled metrics, so this mode cannot change pagination or line breaks. */
-#document-surface.prefer-system-fonts .word-page svg text[font-family="Carlito"] { font-family: "Calibri", "Carlito" !important; }
-#document-surface.prefer-system-fonts .word-page svg text[font-family="Liberation Sans"] { font-family: "Arial", "Liberation Sans" !important; }
-#document-surface.prefer-system-fonts .word-page svg text[font-family="Liberation Serif"] { font-family: "Times New Roman", "Liberation Serif" !important; }
-#document-surface.prefer-system-fonts .word-page svg text[font-family="Liberation Mono"] { font-family: "Courier New", "Liberation Mono" !important; }
-#document-surface.prefer-system-fonts .word-page svg text[font-family="Noto Sans SC"] { font-family: "Microsoft YaHei", "SimSun", "Noto Sans SC" !important; }
+.surface.prefer-system-fonts .word-page svg text[font-family="Carlito"] { font-family: "Calibri", "Carlito" !important; }
+.surface.prefer-system-fonts .word-page svg text[font-family="Liberation Sans"] { font-family: "Arial", "Liberation Sans" !important; }
+.surface.prefer-system-fonts .word-page svg text[font-family="Liberation Serif"] { font-family: "Times New Roman", "Liberation Serif" !important; }
+.surface.prefer-system-fonts .word-page svg text[font-family="Liberation Mono"] { font-family: "Courier New", "Liberation Mono" !important; }
+.surface.prefer-system-fonts .word-page svg text[font-family="Noto Sans SC"] { font-family: "Microsoft YaHei", "SimSun", "Noto Sans SC" !important; }
 
 .sheet-document { min-width: max-content; zoom: var(--office-zoom, 1); padding: 8px; background: #fff; box-shadow: 0 3px 14px rgba(15, 23, 42, .12); user-select: none; }
 .sheet-document { font-family: "Carlito", "Liberation Sans", "Noto Sans SC", sans-serif; }
 .sheet-document figure.chart svg text { font-family: "Carlito", "Liberation Sans", "Noto Sans SC", sans-serif; }
-#document-surface.prefer-system-fonts .sheet-document { font-family: "Calibri", "Arial", "Microsoft YaHei", "SimSun", "Carlito", "Liberation Sans", "Noto Sans SC", sans-serif; }
-#document-surface.prefer-system-fonts .sheet-document figure.chart svg text { font-family: "Calibri", "Arial", "Microsoft YaHei", "SimSun", "Carlito", "Liberation Sans", "Noto Sans SC", sans-serif; }
+.surface.prefer-system-fonts .sheet-document { font-family: "Calibri", "Arial", "Microsoft YaHei", "SimSun", "Carlito", "Liberation Sans", "Noto Sans SC", sans-serif; }
+.surface.prefer-system-fonts .sheet-document figure.chart svg text { font-family: "Calibri", "Arial", "Microsoft YaHei", "SimSun", "Carlito", "Liberation Sans", "Noto Sans SC", sans-serif; }
 .sheet-document > h1 { margin: 4px 0 14px; font-size: 17px; }
 .sheet-document section { margin: 0 0 22px; }
 .sheet-document section > h2 { position: sticky; left: 0; z-index: 1; width: max-content; margin: 10px 0 5px; padding: 4px 7px; background: #f3f4f6; border: 1px solid var(--border); border-radius: 4px; font-size: 13px; }

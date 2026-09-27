@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "local/office-viewer/cmd/browser"
+package "moonbit-community/office-viewer/cmd/browser"
 
 // Values
 
