@@ -1,0 +1,6 @@
+members = [
+  ".",
+  "../office.mbt/mbtexcel",
+  "../office.mbt/pagelayout",
+  "../rabbita/rabbita",
+]

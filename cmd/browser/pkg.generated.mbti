@@ -1,0 +1,21 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "local/office-viewer/cmd/browser"
+
+// Values
+
+// Errors
+
+// Types and methods
+type DocumentKind derive(Eq)
+
+type FilePayload
+
+type LoadedDocument derive(Eq)
+
+type Model derive(Eq)
+
+type Msg
+
+// Type aliases
+
+// Traits
