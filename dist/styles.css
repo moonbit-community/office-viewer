@@ -263,6 +263,8 @@ button, input { font: inherit; }
 .side-panel { display: none; width: 290px; overflow: auto; padding: 16px; border-left: 1px solid var(--border); background: #fff; }
 .side-panel.open { display: block; }
 .side-panel h2 { margin: 0 0 12px; font-size: 14px; }
+.side-panel-actions { display: flex; gap: 6px; margin-bottom: 12px; }
+.selection-content { margin-bottom: 12px; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .side-panel dl { margin: 0; font-size: 12px; }
 .side-panel dt { margin-top: 10px; color: var(--muted); }
 .side-panel dd { margin: 3px 0 0; white-space: pre-wrap; word-break: break-word; }

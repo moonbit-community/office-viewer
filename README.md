@@ -31,9 +31,10 @@ moon run --target native warren -- \
 
 The current selection layer is deliberately read-only: Word uses browser text
 selection inside positioned page SVG, and Excel uses rectangle selection over
-cells while retaining the inferred sheet cell address in the inspector. The
-selection text is copied through the browser clipboard and is the handoff point
-for the later OpenSeek Agent conversation.
+cells. Both produce the versioned `office.selection.v1` JSON envelope shown in
+[`docs/selection-model.md`](docs/selection-model.md); the inspector displays
+that envelope and can copy it through the browser clipboard for the later
+OpenSeek Agent conversation.
 
 The layout engines still have documented OOXML gaps, including some nested
 tables, content controls, tab-stop cases, and paragraph-level section breaks.

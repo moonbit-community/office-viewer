@@ -53,7 +53,7 @@ fn parse_document(payload : FilePayload) -> Result[LoadedDocument, String] {
           name: payload.name,
           surface_html: word_surface(pages),
           item_count: pages.length(),
-          warning: "Word layout is read-only. Unsupported OOXML features remain visible in the status area when reported by the engine.",
+          warning: "Word layout is read-only. Text selections retain source paths for Agent context.",
         })
       }
       Excel => {

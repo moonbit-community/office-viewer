@@ -171,10 +171,6 @@ extern "js" fn install_surface_interactions(
   #|     target.addEventListener(type, handler, options);
   #|     cleanups.push(() => target.removeEventListener(type, handler, options));
   #|   };
-  #|   const cellFromPoint = (event) => {
-  #|     const element = document.elementFromPoint(event.clientX, event.clientY);
-  #|     return element && element.closest ? element.closest("td") : null;
-  #|   };
   #|   const columnName = (number) => {
   #|     let value = number;
   #|     let name = "";
@@ -185,41 +181,111 @@ extern "js" fn install_surface_interactions(
   #|     }
   #|     return name;
   #|   };
-  #|   const buildCellLabels = (table) => {
-  #|     if (table.__officeViewerCellLabels) return table.__officeViewerCellLabels;
-  #|     const occupied = [];
-  #|     const labels = new Map();
-  #|     for (let rowIndex = 0; rowIndex < table.rows.length; rowIndex += 1) {
-  #|       if (!occupied[rowIndex]) occupied[rowIndex] = [];
-  #|       let colIndex = 0;
-  #|       for (const cell of Array.from(table.rows[rowIndex].cells)) {
-  #|         while (occupied[rowIndex][colIndex]) colIndex += 1;
-  #|         const colspan = Math.max(1, cell.colSpan || 1);
-  #|         const rowspan = Math.max(1, cell.rowSpan || 1);
-  #|         labels.set(cell, `${columnName(colIndex + 1)}${rowIndex + 1}`);
-  #|         for (let row = rowIndex; row < rowIndex + rowspan; row += 1) {
-  #|           if (!occupied[row]) occupied[row] = [];
-  #|           for (let col = colIndex; col < colIndex + colspan; col += 1) {
-  #|             occupied[row][col] = true;
-  #|           }
+  #|   const jsonSelection = (value) => onSelection(JSON.stringify(value, null, 2));
+  #|   const nodeIsInside = (root, node) => root === node || root.contains(node);
+  #|
+  #|   // SVG text is still selected through the browser's native Range. The
+  #|   // source attributes on each text fragment let us turn that Range into
+  #|   // document-local UTF-16 spans without changing the I-beam behavior.
+  #|   const wordSelection = () => {
+  #|     const selection = window.getSelection();
+  #|     if (!selection || selection.rangeCount === 0) return;
+  #|     const text = selection.toString();
+  #|     if (!text.trim()) return;
+  #|     const range = selection.getRangeAt(0);
+  #|     if (!nodeIsInside(host, range.startContainer) ||
+  #|         !nodeIsInside(host, range.endContainer)) return;
+  #|     const anchors = [];
+  #|     const byKey = new Map();
+  #|     const pages = new Set();
+  #|     const fragments = host.querySelectorAll("svg text[data-source-id]");
+  #|     for (const fragment of fragments) {
+  #|       const fragmentRange = document.createRange();
+  #|       fragmentRange.selectNodeContents(fragment);
+  #|       if (range.compareBoundaryPoints(Range.END_TO_START, fragmentRange) <= 0 ||
+  #|           range.compareBoundaryPoints(Range.START_TO_END, fragmentRange) >= 0) {
+  #|         continue;
+  #|       }
+  #|       const length = (fragment.textContent || "").length;
+  #|       const offsetWithin = (container, offset, fallback) => {
+  #|         if (!nodeIsInside(fragment, container)) return fallback;
+  #|         const probe = document.createRange();
+  #|         probe.selectNodeContents(fragment);
+  #|         try {
+  #|           probe.setEnd(container, offset);
+  #|           return probe.toString().length;
+  #|         } catch (_) {
+  #|           return fallback;
   #|         }
-  #|         colIndex += colspan;
+  #|       };
+  #|       const startsInside = nodeIsInside(fragment, range.startContainer);
+  #|       const endsInside = nodeIsInside(fragment, range.endContainer);
+  #|       const localStart = startsInside
+  #|         ? offsetWithin(range.startContainer, range.startOffset, 0)
+  #|         : 0;
+  #|       const localEnd = endsInside
+  #|         ? offsetWithin(range.endContainer, range.endOffset, length)
+  #|         : length;
+  #|       const sourceStart = Number(fragment.dataset.sourceStart || 0);
+  #|       const sourceEnd = Number(fragment.dataset.sourceEnd || sourceStart + length);
+  #|       const start = sourceStart + Math.max(0, Math.min(length, localStart));
+  #|       const end = sourceStart + Math.max(0, Math.min(length, localEnd));
+  #|       if (end <= start) continue;
+  #|       const pageElement = fragment.closest(".word-page");
+  #|       const page = pageElement && pageElement.dataset && pageElement.dataset.page
+  #|         ? Number(pageElement.dataset.page)
+  #|         : null;
+  #|       if (page !== null) pages.add(page);
+  #|       const id = fragment.dataset.sourceId || "";
+  #|       const part = fragment.dataset.sourcePart || "";
+  #|       const path = fragment.dataset.sourcePath || "";
+  #|       const key = `${id}|${part}|${path}|${page === null ? "" : page}`;
+  #|       const previous = byKey.get(key);
+  #|       if (previous) {
+  #|         previous.start_utf16 = Math.min(previous.start_utf16, start);
+  #|         previous.end_utf16 = Math.max(previous.end_utf16, Math.min(sourceEnd, end));
+  #|       } else {
+  #|         const anchor = {
+  #|           source_id: id,
+  #|           part,
+  #|           path,
+  #|           start_utf16: start,
+  #|           end_utf16: Math.min(sourceEnd, end),
+  #|         };
+  #|         if (page !== null) anchor.page = page;
+  #|         byKey.set(key, anchor);
+  #|         anchors.push(anchor);
   #|       }
   #|     }
-  #|     table.__officeViewerCellLabels = labels;
-  #|     return labels;
+  #|     anchors.sort((left, right) => {
+  #|       const lp = left.page || 0;
+  #|       const rp = right.page || 0;
+  #|       return lp - rp || left.start_utf16 - right.start_utf16;
+  #|     });
+  #|     jsonSelection({
+  #|       schema: "office.selection.v1",
+  #|       kind: "word",
+  #|       text,
+  #|       anchors,
+  #|       pages: Array.from(pages).sort((left, right) => left - right),
+  #|     });
   #|   };
-  #|   const cellLabel = (cell) => {
-  #|     if (!cell) return "";
-  #|     if (cell.dataset && cell.dataset.cell) return cell.dataset.cell;
-  #|     const table = cell.closest("table");
-  #|     const labels = table ? buildCellLabels(table) : null;
-  #|     if (labels && labels.has(cell)) return labels.get(cell);
-  #|     const row = cell.parentElement;
-  #|     if (!row || !table) return "cell";
-  #|     const rowIndex = Array.from(table.rows).indexOf(row) + 1;
-  #|     const colIndex = Array.from(row.cells).indexOf(cell) + 1;
-  #|     return `R${rowIndex}C${colIndex}`;
+  #|
+  #|   const cellCoordinates = (cell) => {
+  #|     if (!cell || !cell.dataset) return null;
+  #|     const row = Number(cell.dataset.row);
+  #|     const col = Number(cell.dataset.col);
+  #|     if (!Number.isFinite(row) || !Number.isFinite(col)) return null;
+  #|     return {
+  #|       row,
+  #|       col,
+  #|       rowEnd: row + Math.max(1, cell.rowSpan || 1) - 1,
+  #|       colEnd: col + Math.max(1, cell.colSpan || 1) - 1,
+  #|     };
+  #|   };
+  #|   const cellFromPoint = (event) => {
+  #|     const element = document.elementFromPoint(event.clientX, event.clientY);
+  #|     return element && element.closest ? element.closest("td") : null;
   #|   };
   #|   const clearCells = (table) => {
   #|     if (!table) return;
@@ -229,85 +295,100 @@ extern "js" fn install_surface_interactions(
   #|   };
   #|   const selectCells = (anchor, active) => {
   #|     const table = anchor && anchor.closest("table");
-  #|     if (!table || !active || active.closest("table") !== table) return [];
-  #|     const a = anchor.getBoundingClientRect();
-  #|     const b = active.getBoundingClientRect();
-  #|     const left = Math.min(a.left, b.left);
-  #|     const right = Math.max(a.right, b.right);
-  #|     const top = Math.min(a.top, b.top);
-  #|     const bottom = Math.max(a.bottom, b.bottom);
+  #|     if (!table || !active || active.closest("table") !== table) return null;
+  #|     const a = cellCoordinates(anchor);
+  #|     const b = cellCoordinates(active);
+  #|     if (!a || !b) return null;
+  #|     const top = Math.min(a.row, b.row);
+  #|     const bottom = Math.max(a.rowEnd, b.rowEnd);
+  #|     const left = Math.min(a.col, b.col);
+  #|     const right = Math.max(a.colEnd, b.colEnd);
   #|     const selected = [];
   #|     clearCells(table);
-  #|     for (const cell of table.querySelectorAll("td")) {
-  #|       const rect = cell.getBoundingClientRect();
-  #|       const cx = (rect.left + rect.right) / 2;
-  #|       const cy = (rect.top + rect.bottom) / 2;
-  #|       if (cx >= left && cx <= right && cy >= top && cy <= bottom) {
+  #|     for (const cell of table.querySelectorAll("td[data-cell]")) {
+  #|       const coordinates = cellCoordinates(cell);
+  #|       if (!coordinates) continue;
+  #|       const intersects = coordinates.row <= bottom && coordinates.rowEnd >= top &&
+  #|         coordinates.col <= right && coordinates.colEnd >= left;
+  #|       if (intersects) {
   #|         cell.classList.add("office-cell-selected");
   #|         selected.push(cell);
   #|       }
   #|     }
-  #|     return selected;
+  #|     selected.sort((leftCell, rightCell) => {
+  #|       const leftCoordinates = cellCoordinates(leftCell);
+  #|       const rightCoordinates = cellCoordinates(rightCell);
+  #|       return leftCoordinates.row - rightCoordinates.row ||
+  #|         leftCoordinates.col - rightCoordinates.col;
+  #|     });
+  #|     return { cells: selected, top, bottom, left, right };
   #|   };
+  #|   const excelSelection = (pointer) => {
+  #|     const selected = selectCells(pointer.anchor, pointer.active);
+  #|     if (!selected || selected.cells.length === 0) return;
+  #|     const table = pointer.table;
+  #|     const section = table && table.closest ? table.closest("section") : null;
+  #|     const sheet = section && section.dataset && section.dataset.sheet
+  #|       ? section.dataset.sheet
+  #|       : (selected.cells[0].dataset.sheet || "Sheet");
+  #|     const rangeStart = `${columnName(selected.left)}${selected.top}`;
+  #|     const rangeEnd = `${columnName(selected.right)}${selected.bottom}`;
+  #|     const cells = selected.cells.map((cell) => {
+  #|       const coordinates = cellCoordinates(cell);
+  #|       return {
+  #|         address: cell.dataset.cell,
+  #|         row: coordinates.row,
+  #|         column: coordinates.col,
+  #|         text: cell.textContent || "",
+  #|       };
+  #|     });
+  #|     jsonSelection({
+  #|       schema: "office.selection.v1",
+  #|       kind: "excel",
+  #|       sheet,
+  #|       range: rangeStart === rangeEnd ? rangeStart : `${rangeStart}:${rangeEnd}`,
+  #|       cells,
+  #|     });
+  #|   };
+  #|
   #|   let pointer = null;
   #|   const pointerDown = (event) => {
   #|     if (event.button !== undefined && event.button !== 0) return;
   #|     if (kind === "excel") {
   #|       const cell = event.target && event.target.closest ? event.target.closest("td") : null;
-  #|       if (!cell) return;
+  #|       if (!cell || !cell.dataset.cell) return;
   #|       event.preventDefault();
   #|       pointer = { anchor: cell, active: cell, table: cell.closest("table") };
   #|       selectCells(cell, cell);
   #|       return;
   #|     }
   #|     if (!event.target || !event.target.closest || !event.target.closest(".word-page")) return;
-  #|     const page = event.target.closest(".word-page");
-  #|     pointer = {
-  #|       page,
-  #|     };
+  #|     pointer = { word: true };
   #|   };
   #|   const pointerMove = (event) => {
-  #|     if (!pointer) return;
-  #|     if (kind !== "excel") return;
+  #|     if (!pointer || kind !== "excel") return;
   #|     const cell = cellFromPoint(event);
   #|     if (cell) pointer.active = cell;
   #|     selectCells(pointer.anchor, pointer.active);
   #|   };
-  #|   const pointerUp = (event) => {
+  #|   const pointerUp = () => {
   #|     if (!pointer) return;
-  #|     if (kind === "excel") {
-  #|       const cells = selectCells(pointer.anchor, pointer.active);
-  #|       const values = cells.map((cell) => cell.textContent || "");
-  #|       const labels = cells.map(cellLabel);
-  #|       const first = labels.length ? labels[0] : "cell";
-  #|       const table = pointer.table;
-  #|       const section = table && table.closest ? table.closest("section") : null;
-  #|       const sheet = section && section.dataset && section.dataset.sheet
-  #|         ? section.dataset.sheet
-  #|         : "Sheet";
-  #|       onSelection(`Excel ${sheet}!${first} (${cells.length} cells)\n${values.join("\t")}`);
-  #|     } else {
-  #|       const selection = window.getSelection();
-  #|       const text = selection ? selection.toString().trim() : "";
-  #|       let belongsToPage = true;
-  #|       if (text && selection && selection.rangeCount > 0 && pointer.page) {
-  #|         const range = selection.getRangeAt(0);
-  #|         belongsToPage = pointer.page.contains(range.startContainer) ||
-  #|           pointer.page.contains(range.endContainer);
-  #|       }
-  #|       if (text && belongsToPage) {
-  #|         const pageNumber = pointer.page && pointer.page.dataset
-  #|           ? pointer.page.dataset.page
-  #|           : "?";
-  #|         onSelection(`Word page ${pageNumber}\n${text}`);
-  #|       }
-  #|     }
+  #|     if (kind === "excel") excelSelection(pointer);
+  #|     else wordSelection();
   #|     pointer = null;
+  #|   };
+  #|   const pointerCancel = () => {
+  #|     if (pointer && kind === "excel") clearCells(pointer.table);
+  #|     pointer = null;
+  #|   };
+  #|   const selectionChanged = () => {
+  #|     if (kind === "word") wordSelection();
   #|   };
   #|   add(host, "pointerdown", pointerDown);
   #|   add(window, "pointermove", pointerMove);
   #|   add(window, "pointerup", pointerUp);
-  #|   add(window, "pointercancel", pointerUp);
+  #|   add(window, "pointercancel", pointerCancel);
+  #|   add(document, "selectionchange", selectionChanged);
   #|   if (kind === "excel") {
   #|     add(host, "dragstart", (event) => event.preventDefault());
   #|   }
