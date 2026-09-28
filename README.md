@@ -45,6 +45,13 @@ formats produce the versioned `office.selection.v1` JSON envelope shown in
 that envelope and can copy it through the browser clipboard for the later
 OpenSeek Agent conversation.
 
+Hosts can choose `@viewer.materialize_selection_full`,
+`@viewer.materialize_selection_preview`, or
+`@viewer.materialize_selection_deferred` to control how much selected content
+enters an Agent context. The APIs preserve the existing `office.mbt` file and
+selector fields and make UTF-16 omission counts explicit; see
+[`docs/embedding.md`](docs/embedding.md).
+
 The reusable surface lives in [`viewer/`](viewer/). Its renderer and Rabbita
 surface are host-neutral: a standalone host can provide browser file bytes,
 while OpenSeek can provide bytes and the real `office.mbt` file path from its

@@ -26,6 +26,24 @@ uses `/xlsx/sheet[name="Data"]/cell[B4]`; a rectangular drag uses
 `/xlsx/sheet[name="Data"]/range[B4:D9]`. The browser derives these addresses
 from the rendered table, including merged cell spans.
 
+The host chooses how much selected content to send to an Agent by calling one
+of the viewer's materialization APIs after receiving the callback JSON:
+
+```mbt
+let full = @viewer.materialize_selection_full(selection_json)
+let preview = @viewer.materialize_selection_preview(selection_json, 1000)
+let deferred = @viewer.materialize_selection_deferred(selection_json)
+```
+
+All three return `office.selection.materialized.v1`. `full` carries exact text,
+`preview` carries a deterministic head/tail excerpt and UTF-16 omission counts,
+and `deferred` carries `file`, canonical selectors, and compact source anchors
+without the selected text. The generic `materialize_selection` entry point
+accepts `SelectionMaterializationOptions` when the host needs a different
+preview or source-anchor bound. A deferred result is a reference for a later
+`office.mbt` read; it is not an instruction to guess text from the rendered
+SVG or HTML.
+
 The clean upstream `pagelayout/svg` backend currently exposes no OOXML source
 map. Word selection therefore emits the selected text, physical page, UTF-16
 fragment spans, and a bounding rectangle with `stability: "physical-only"`.

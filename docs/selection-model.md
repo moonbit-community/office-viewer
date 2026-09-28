@@ -109,6 +109,39 @@ selection over the rendered worksheet window. Nested tables, drawings, and
 other unsupported OOXML remain governed by the layout engine's existing
 diagnostics instead of being treated as selected content.
 
+## Agent materialization
+
+The viewer package does not force one context policy on its host. It exposes
+three JSON APIs over the existing envelope:
+
+```mbt
+@viewer.materialize_selection_full(selection_json)
+@viewer.materialize_selection_preview(selection_json, 1000)
+@viewer.materialize_selection_deferred(selection_json)
+```
+
+Each returns `office.selection.materialized.v1` and keeps the original
+`office.selection.v1` shape under `selection` for the fields that are safe for
+the selected mode. The `content` object makes omission explicit. `full` keeps
+the exact selected text and original selection details. `preview` uses a
+deterministic UTF-16-bounded head/tail excerpt and does not invent a summary;
+the `[...]` marker is not counted as selected document text. `deferred` sets
+`selection.text` to `null` and carries compact reader references instead; the
+host can use the `file` and `selectors` to read the exact text later.
+
+Preview and deferred results intentionally omit large DOM rectangles, raw Word
+anchor text, and Excel cell payloads from the projected selection. They retain
+counts and compact source fields (`selector`, `path`, `part`, UTF-16 spans,
+`runs`, `page`, `stability`, and reader judgment fields). The convenience APIs
+return at most 64 compact source anchors and report `anchors_truncated`; callers
+that need another bound can use `materialize_selection` with
+`SelectionMaterializationOptions`.
+
+For Excel selections that do not have a top-level `text` field, the viewer
+derives exact content from the selected cells in row order, using tabs between
+columns and newlines between rows. The canonical sheet/range selector remains
+the authoritative read-back address.
+
 ## OpenSeek handoff
 
 OpenSeek should receive the envelope together with the `file` path and a

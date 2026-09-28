@@ -7,9 +7,21 @@ import {
 }
 
 // Values
+pub let default_selection_preview_utf16 : Int
+
+pub let default_selection_source_anchors : Int
+
 pub fn document_kind(String) -> DocumentKind?
 
 pub fn interactions_command(SurfaceConfig, (String) -> @cmd.Cmd) -> @cmd.Cmd
+
+pub fn materialize_selection(String, SelectionMaterializationOptions) -> Result[String, String]
+
+pub fn materialize_selection_deferred(String) -> Result[String, String]
+
+pub fn materialize_selection_full(String) -> Result[String, String]
+
+pub fn materialize_selection_preview(String, Int) -> Result[String, String]
 
 pub fn render_document(String, String, Bytes) -> Result[RenderedDocument, String]
 
@@ -37,6 +49,22 @@ pub(all) struct RenderedDocument {
 } derive(Eq)
 pub fn RenderedDocument::equal(Self, Self) -> Bool
 pub fn RenderedDocument::not_equal(Self, Self) -> Bool
+
+pub(all) enum SelectionMaterializationMode {
+  Full
+  Preview
+  Deferred
+} derive(Eq)
+pub fn SelectionMaterializationMode::equal(Self, Self) -> Bool
+pub fn SelectionMaterializationMode::not_equal(Self, Self) -> Bool
+
+pub(all) struct SelectionMaterializationOptions {
+  mode : SelectionMaterializationMode
+  max_preview_utf16 : Int
+  max_source_anchors : Int
+} derive(Eq)
+pub fn SelectionMaterializationOptions::equal(Self, Self) -> Bool
+pub fn SelectionMaterializationOptions::not_equal(Self, Self) -> Bool
 
 pub(all) struct SurfaceConfig {
   surface_id : String
