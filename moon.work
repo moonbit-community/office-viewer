@@ -1,5 +1,8 @@
 members = [
   ".",
+  "../office.mbt/.mooncakes/Milky2018/xml",
+  "../office.mbt/ooxml",
+  "../office.mbt/docx2html",
   "../office.mbt/mbtexcel",
   "../office.mbt/pagelayout",
   "../rabbita/rabbita",

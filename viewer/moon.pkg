@@ -2,8 +2,12 @@ import {
   "moonbit-community/rabbita",
   "moonbit-community/rabbita/cmd",
   "moonbit-community/rabbita/html",
+  "moonbitlang/docx2html",
+  "moonbitlang/docx2html/document",
+  "moonbitlang/docx2html/docx" @reader,
   "moonbitlang/mbtexcel",
   "moonbitlang/mbtexcel/xlsx2html",
+  "moonbitlang/pagelayout",
   "moonbitlang/pagelayout/docx",
   "moonbitlang/pagelayout/svg",
 }

@@ -37,11 +37,27 @@ not change the meaning of existing fields.
 Word continues to use browser-native text selection. The browser intersects the
 native `Range` with positioned SVG text fragments and records the selected text,
 page number, UTF-16 span within each visual fragment, and a physical bounding
-rectangle. Clean upstream `pagelayout/svg` output does not carry OOXML
-provenance attributes, so the viewer omits `selector`, `path`, and source byte
-claims unless a future host supplies an explicit source map. A physical-only
-anchor is intentionally less powerful than a guessed selector and must be
-treated as such by the Agent.
+rectangle. Before emitting the SVG, the viewer reads the same DOCX bytes with
+`office.mbt`'s annotated reader, builds the body paragraph/run projection, and
+joins it to the PageModel text in document order. A fragment receives
+`data-source-*` attributes only after the paragraph projection, parsed run
+text, and reader `find` run paths agree. The browser then translates the
+fragment-local range to paragraph-relative UTF-16 offsets.
+
+The join is deliberately fail-closed. Unsupported wrappers, numbering or
+headers/footers that make the body projection differ from the layout, duplicate
+or missing anchors, and any incomplete text sequence retain the physical page
+rectangle and omit a logical selector. A physical-only anchor is intentionally
+less powerful than a guessed selector and must be treated as such by the Agent.
+
+For a joined body paragraph, metadata follows the existing `office.mbt` reader
+contract: `path` is the reader path such as `p[3]`, `selector` is
+`/docx/body/p[3]` or a unique `p[id="..."]` selector, `part` is
+`word/document.xml`, `start_utf16`/`end_utf16` are paragraph projection
+coordinates, and `runs` contains body-relative run paths such as
+`p[3]/r[2]`. The reader's `actionable`, refusal reason, and paragraph anchor
+status are carried as optional metadata so a later Agent can distinguish a
+valid address from a reader refusal without reparsing SVG.
 
 Excel uses cell selection rather than text selection:
 
@@ -98,8 +114,9 @@ diagnostics instead of being treated as selected content.
 OpenSeek should receive the envelope together with the `file` path and a
 host-owned document identity when one is available. The standalone demo uses a
 `/mock/office/...` path; the OpenSeek host replaces it with the path it passes
-to `office`. `selector` follows `office.selector/1`, while `source_id` and
-`path` remain renderer provenance for debugging. OpenSeek can quote `text`
-immediately and use the canonical selector to request richer context through
-`office get`, `office text`, `office outline`, or `office query` later. This
-keeps Agent behavior independent from the current SVG/HTML implementation.
+to `office`. `selector` follows `office.selector/1`; `path`, `part`, `runs`,
+`stability`, and the reader judgment fields are bounded source metadata for
+debugging and later Agent actions. OpenSeek can quote `text` immediately and
+use a canonical selector to request richer context through `office get`,
+`office text`, `office outline`, or `office query` later. This keeps Agent
+behavior independent from the current SVG/HTML implementation.

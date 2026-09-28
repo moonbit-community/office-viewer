@@ -84,14 +84,18 @@ pub fn render_document(
     match kind {
       Word => {
         let model = @docx.render_docx(bytes)
-        let pages = @svg.render_pages(model)
+        let rendered_pages = @svg.render_pages(model)
+        let pages = match build_word_source_index(bytes) {
+          Some(index) => decorate_word_pages(rendered_pages, model, index)
+          None => rendered_pages
+        }
         Ok({
           kind,
           name,
           file,
           surface_html: word_surface(pages),
           item_count: pages.length(),
-          warning: "Word layout is read-only. This renderer build has no OOXML provenance map, so text selections retain physical page context and do not invent a selector.",
+          warning: "Word layout is read-only. Reader-backed paragraph selectors are emitted only when the source and PageModel text join completely; unsupported or ambiguous text remains physical-only.",
         })
       }
       Excel => {

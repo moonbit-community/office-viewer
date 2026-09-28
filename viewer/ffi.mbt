@@ -129,9 +129,9 @@ extern "js" fn install_surface_interactions(
   #|   };
   #|   ensureExcelCellMetadata();
   #|
-  #|   // SVG text is selected with the browser's native Range. Clean upstream
-  #|   // SVG has no source map, so physical fragments are reported explicitly;
-  #|   // selector is added only when a future renderer supplies one.
+  #|   // SVG text is selected with the browser's native Range. Reader-backed
+  #|   // metadata is trusted only when its paragraph-relative span covers the
+  #|   // complete emitted fragment; otherwise the anchor stays physical-only.
   #|   const wordSelection = () => {
   #|     const selection = window.getSelection();
   #|     if (!selection || selection.rangeCount === 0) return;
@@ -174,24 +174,48 @@ extern "js" fn install_surface_interactions(
   #|       const sourcePart = fragment.dataset.sourcePart || "";
   #|       const sourcePath = fragment.dataset.sourcePath || "";
   #|       const sourceSelector = fragment.dataset.sourceSelector || null;
+  #|       const sourceParaId = fragment.dataset.sourceParaId || null;
+  #|       const sourceAnchorStatus = fragment.dataset.sourceAnchorStatus || null;
+  #|       const sourceActionable = fragment.dataset.sourceActionable === "true";
+  #|       const sourceReason = fragment.dataset.sourceReason || "";
+  #|       const sourceStability = fragment.dataset.sourceStability || null;
+  #|       const sourceStart = Number(fragment.dataset.sourceStart);
+  #|       const sourceEnd = Number(fragment.dataset.sourceEnd);
+  #|       const sourceRunsValue = fragment.dataset.sourceRuns || "";
+  #|       const hasLogicalSpan = !!sourceSelector &&
+  #|         Number.isFinite(sourceStart) && Number.isFinite(sourceEnd) &&
+  #|         sourceEnd >= sourceStart && sourceEnd - sourceStart === length;
+  #|       const logicalStart = hasLogicalSpan ? sourceStart + start : start;
+  #|       const logicalEnd = hasLogicalSpan ? sourceStart + end : end;
+  #|       const sourceRuns = hasLogicalSpan && sourceRunsValue
+  #|         ? sourceRunsValue.split(",").filter(value => value.length > 0)
+  #|         : undefined;
   #|       const rect = fragment.getBoundingClientRect();
   #|       const key = `${sourceId}|${sourcePart}|${sourcePath}|${sourceSelector || ""}|${page || ""}|${rect.left}|${rect.top}`;
   #|       const previous = byKey.get(key);
   #|       if (previous) {
-  #|         previous.start_utf16 = Math.min(previous.start_utf16, start);
-  #|         previous.end_utf16 = Math.max(previous.end_utf16, end);
+  #|         previous.start_utf16 = Math.min(previous.start_utf16, logicalStart);
+  #|         previous.end_utf16 = Math.max(previous.end_utf16, logicalEnd);
   #|       } else {
   #|         const anchor = {
   #|           source_id: sourceId || undefined,
   #|           part: sourcePart || undefined,
-  #|           path: sourcePath || undefined,
-  #|           selector: sourceSelector || undefined,
-  #|           stability: sourceSelector ? "snapshot-relative" : "physical-only",
-  #|           start_utf16: start,
-  #|           end_utf16: end,
+  #|           path: hasLogicalSpan ? sourcePath : undefined,
+  #|           selector: hasLogicalSpan ? sourceSelector : undefined,
+  #|           stability: hasLogicalSpan
+  #|             ? (sourceStability || "snapshot-relative") : "physical-only",
+  #|           start_utf16: logicalStart,
+  #|           end_utf16: logicalEnd,
   #|           text: (fragment.textContent || "").slice(start, end),
   #|           rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
   #|         };
+  #|         if (sourceRuns && sourceRuns.length > 0) anchor.runs = sourceRuns;
+  #|         if (hasLogicalSpan) {
+  #|           anchor.actionable = sourceActionable;
+  #|           anchor.paragraph_anchor_status = sourceAnchorStatus || "missing";
+  #|           if (sourceReason) anchor.reason = sourceReason;
+  #|           if (sourceParaId) anchor.para_id = sourceParaId;
+  #|         }
   #|         if (page !== null) anchor.page = page;
   #|         byKey.set(key, anchor);
   #|         anchors.push(anchor);

@@ -13,6 +13,11 @@ formula text within the renderer's current limits.
 
 ## Run locally
 
+The MoonBit workspace currently uses the local `office.mbt` and `rabbita`
+checkouts for the layout, reader, and browser runtime packages. Keep them next
+to this repository as `../office.mbt` and `../rabbita` when running the commands
+below.
+
 From the Rabbita checkout:
 
 ```sh
@@ -31,7 +36,11 @@ moon run --target native warren -- \
 
 The current selection layer is deliberately read-only: Word uses browser text
 selection inside positioned page SVG, and Excel uses rectangle selection over
-cells. Both produce the versioned `office.selection.v1` JSON envelope shown in
+cells. Word's source metadata is built in the viewer by reading the same bytes
+through `office.mbt`'s annotated DOCX reader and joining its paragraph/run
+projection with the PageModel text. The join is fail-closed, so an uncertain
+paragraph remains physical-only instead of receiving a guessed selector. Both
+formats produce the versioned `office.selection.v1` JSON envelope shown in
 [`docs/selection-model.md`](docs/selection-model.md); the inspector displays
 that envelope and can copy it through the browser clipboard for the later
 OpenSeek Agent conversation.

@@ -4,6 +4,7 @@ version = "0.1.0"
 
 import {
   "moonbit-community/rabbita@0.16.3",
+  "moonbitlang/docx2html@0.6.1",
   "moonbitlang/mbtexcel@0.2.0",
   "moonbitlang/pagelayout@0.2.0",
 }
