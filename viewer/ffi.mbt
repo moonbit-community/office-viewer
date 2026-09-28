@@ -145,10 +145,10 @@ extern "js" fn install_surface_interactions(
   #|     const pages = new Set();
   #|     const fragments = host.querySelectorAll("svg text");
   #|     for (const fragment of fragments) {
-  #|       const fragmentRange = document.createRange();
-  #|       fragmentRange.selectNodeContents(fragment);
-  #|       if (range.compareBoundaryPoints(Range.END_TO_START, fragmentRange) <= 0 ||
-  #|           range.compareBoundaryPoints(Range.START_TO_END, fragmentRange) >= 0) continue;
+  #|       // `compareBoundaryPoints` is easy to reverse here because its
+  #|       // argument is the source range. `intersectsNode` expresses the
+  #|       // selection test directly and works for SVG text nodes as well.
+  #|       if (!range.intersectsNode(fragment)) continue;
   #|       const length = (fragment.textContent || "").length;
   #|       const offsetWithin = (container, offset, fallback) => {
   #|         if (!nodeIsInside(fragment, container)) return fallback;
