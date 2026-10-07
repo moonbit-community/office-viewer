@@ -93,6 +93,191 @@ extern "js" fn install_surface_interactions(
   #|   const nodeIsInside = (root, node) => root === node || root.contains(node);
   #|   const documentFormat = kind === "word" ? "docx" : "xlsx";
   #|
+  #|   // Position worksheet drawings over their anchor cells using the
+  #|   // reader-provided offsets and dimensions. The overlay is transparent
+  #|   // to pointer events so cell range selection remains uninterrupted.
+  #|   const applyExcelObjectLayout = () => {
+  #|     if (kind !== "excel") return;
+  #|     const node = host.querySelector(".office-object-metadata");
+  #|     let metadata = null;
+  #|     if (node) {
+  #|       try { metadata = JSON.parse(node.textContent || "{}"); }
+  #|       catch (_) { metadata = null; }
+  #|     }
+  #|     if (!metadata || !metadata.sheets) return;
+  #|     const sheetDocument = host.querySelector(".sheet-document");
+  #|     const zoom = sheetDocument
+  #|       ? (Number(getComputedStyle(sheetDocument).zoom) || 1) : 1;
+  #|     for (const section of host.querySelectorAll("section[data-sheet]")) {
+  #|       const sheet = section.dataset.sheet || "Sheet";
+  #|       const objects = Array.isArray(metadata.sheets[sheet])
+  #|         ? metadata.sheets[sheet] : [];
+  #|       const table = section.querySelector("table");
+  #|       const overlay = section.querySelector(":scope > .sheet-objects");
+  #|       if (!table || !overlay) continue;
+  #|       section.classList.add("office-anchored-objects");
+  #|       overlay.classList.add("office-object-overlay");
+  #|       const sectionRect = section.getBoundingClientRect();
+  #|       const cells = Array.from(section.querySelectorAll("td[data-cell]"));
+  #|       const figures = Array.from(overlay.querySelectorAll(
+  #|         "figure.image, figure.chart, figure.chart-placeholder",
+  #|       ));
+  #|       let maxRight = table.offsetWidth || table.getBoundingClientRect().width;
+  #|       let maxBottom = table.offsetHeight || table.getBoundingClientRect().height;
+  #|       figures.forEach((figure, index) => {
+  #|         const info = objects[index];
+  #|         if (!info) return;
+  #|         const anchor = String(info.anchor || figure.dataset.anchor || "");
+  #|         const cell = cells.find((candidate) => candidate.dataset.cell === anchor);
+  #|         if (!cell) return;
+  #|         const cellRect = cell.getBoundingClientRect();
+  #|         const offsetX = Number(info.offset_x) || 0;
+  #|         const offsetY = Number(info.offset_y) || 0;
+  #|         const width = Math.max(1, Number(info.width_px) || 1);
+  #|         const height = Math.max(1, Number(info.height_px) || 1);
+  #|         const left = (cellRect.left - sectionRect.left) / zoom + offsetX;
+  #|         const top = (cellRect.top - sectionRect.top) / zoom + offsetY;
+  #|         figure.style.position = "absolute";
+  #|         figure.style.left = `${left}px`;
+  #|         figure.style.top = `${top}px`;
+  #|         figure.style.width = `${width}px`;
+  #|         figure.style.height = `${height}px`;
+  #|         figure.style.boxSizing = "border-box";
+  #|         figure.style.margin = "0";
+  #|         figure.style.pointerEvents = "none";
+  #|         const image = figure.querySelector("img");
+  #|         if (image) {
+  #|           image.style.display = "block";
+  #|           image.style.width = "100%";
+  #|           image.style.height = "100%";
+  #|           image.style.objectFit = "contain";
+  #|         }
+  #|         const svg = figure.querySelector("svg");
+  #|         if (svg) {
+  #|           svg.style.display = "block";
+  #|           svg.setAttribute("width", String(width));
+  #|           svg.setAttribute("height", String(height));
+  #|           svg.style.width = "100%";
+  #|           svg.style.height = "100%";
+  #|         }
+  #|         maxRight = Math.max(maxRight, left + width);
+  #|         maxBottom = Math.max(maxBottom, top + height);
+  #|       });
+  #|       section.style.minWidth = `${Math.ceil(maxRight)}px`;
+  #|       section.style.minHeight = `${Math.ceil(maxBottom)}px`;
+  #|     }
+  #|   };
+  #|
+  #|   const updateExcelFormulaBar = (cell, range) => {
+  #|     if (kind !== "excel") return;
+  #|     const nameBox = host.querySelector("[data-excel-name]");
+  #|     const valueBox = host.querySelector("[data-excel-value]");
+  #|     if (nameBox) nameBox.textContent = range || (cell && cell.dataset.cell) || "";
+  #|     if (!valueBox) return;
+  #|     if (!cell) {
+  #|       valueBox.textContent = "Select a cell to inspect its value";
+  #|       valueBox.classList.add("is-placeholder");
+  #|       return;
+  #|     }
+  #|     const formula = cell.dataset.formula || "";
+  #|     const value = formula ? `=${formula}` : (cell.textContent || "");
+  #|     valueBox.textContent = value || " ";
+  #|     valueBox.classList.remove("is-placeholder");
+  #|   };
+  #|
+  #|   const setExcelSheet = (sheet) => {
+  #|     if (kind !== "excel") return;
+  #|     const sections = host.querySelectorAll("section[data-sheet]");
+  #|     let active = null;
+  #|     for (const section of sections) {
+  #|       const isActive = section.dataset.sheet === sheet;
+  #|       section.classList.toggle("is-active", isActive);
+  #|       section.hidden = !isActive;
+  #|       if (isActive) active = section;
+  #|     }
+  #|     for (const tab of host.querySelectorAll("[data-excel-sheet-tab]")) {
+  #|       const isActive = tab.dataset.excelSheetTab === sheet;
+  #|       tab.classList.toggle("is-active", isActive);
+  #|       tab.setAttribute("aria-selected", isActive ? "true" : "false");
+  #|     }
+  #|     host.dataset.officeActiveSheet = sheet || "";
+  #|     for (const cell of host.querySelectorAll("td.office-cell-selected, td.office-cell-active")) {
+  #|       cell.classList.remove("office-cell-selected", "office-cell-active");
+  #|     }
+  #|     updateExcelFormulaBar(null, "");
+  #|     if (active) {
+  #|       const table = active.querySelector("table");
+  #|       if (table) table.scrollLeft = 0;
+  #|     }
+  #|     applyExcelObjectLayout();
+  #|   };
+  #|
+  #|   const enhanceExcelSurface = () => {
+  #|     if (kind !== "excel") return;
+  #|     const workbookSurface = host.querySelector(".sheet-document");
+  #|     if (!workbookSurface) return;
+  #|     const sections = Array.from(workbookSurface.querySelectorAll("section[data-sheet]"));
+  #|     if (sections.length === 0) return;
+  #|
+  #|     const workspace = document.createElement("div");
+  #|     workspace.className = "excel-workspace";
+  #|     const toolbar = document.createElement("div");
+  #|     toolbar.className = "excel-view-toolbar";
+  #|     toolbar.innerHTML =
+  #|       '<span class="excel-view-title">Spreadsheet</span>' +
+  #|       '<span class="excel-readonly-badge">Read only</span>' +
+  #|       '<span class="excel-view-hint">Select cells to give an Agent precise context</span>';
+  #|     const formulaBar = document.createElement("div");
+  #|     formulaBar.className = "excel-formula-bar";
+  #|     formulaBar.innerHTML =
+  #|       '<span class="excel-name-box" data-excel-name aria-label="Cell reference"></span>' +
+  #|       '<span class="excel-fx" aria-hidden="true">fx</span>' +
+  #|       '<span class="excel-value-box is-placeholder" data-excel-value>Select a cell to inspect its value</span>';
+  #|     const tabs = document.createElement("nav");
+  #|     tabs.className = "excel-sheet-tabs";
+  #|     tabs.setAttribute("aria-label", "Worksheets");
+  #|     const tabsLabel = document.createElement("span");
+  #|     tabsLabel.className = "excel-tabs-label";
+  #|     tabsLabel.textContent = "Sheets";
+  #|     tabs.appendChild(tabsLabel);
+  #|     const tabList = document.createElement("div");
+  #|     tabList.className = "excel-tab-list";
+  #|     tabs.appendChild(tabList);
+  #|
+  #|     workbookSurface.classList.add("office-excel-workbook");
+  #|     const title = workbookSurface.querySelector(":scope > h1");
+  #|     if (title) title.classList.add("excel-document-title");
+  #|     for (const section of sections) {
+  #|       section.classList.add("excel-sheet");
+  #|       const heading = section.querySelector(":scope > h2");
+  #|       if (heading) heading.classList.add("excel-sheet-heading");
+  #|       const sheetName = section.dataset.sheet || "Sheet";
+  #|       const tab = document.createElement("button");
+  #|       tab.type = "button";
+  #|       tab.className = "excel-sheet-tab";
+  #|       tab.dataset.excelSheetTab = sheetName;
+  #|       tab.setAttribute("role", "tab");
+  #|       tab.setAttribute("aria-selected", "false");
+  #|       tab.textContent = sheetName;
+  #|       tabList.appendChild(tab);
+  #|       add(tab, "click", (event) => {
+  #|         event.preventDefault();
+  #|         setExcelSheet(sheetName);
+  #|       });
+  #|     }
+  #|
+  #|     const parent = workbookSurface.parentNode;
+  #|     if (!parent) return;
+  #|     parent.insertBefore(workspace, workbookSurface);
+  #|     workspace.appendChild(toolbar);
+  #|     workspace.appendChild(formulaBar);
+  #|     workspace.appendChild(workbookSurface);
+  #|     workspace.appendChild(tabs);
+  #|     const rememberedSheet = host.dataset.officeActiveSheet || "";
+  #|     const hasRememberedSheet = sections.some(section => section.dataset.sheet === rememberedSheet);
+  #|     setExcelSheet(hasRememberedSheet ? rememberedSheet : (sections[0].dataset.sheet || "Sheet"));
+  #|   };
+  #|
   #|   // The upstream xlsx2html renderer intentionally emits semantic sheet
   #|   // and table markup but does not know about browser selection. Build the
   #|   // address map here from actual DOM row/column coordinates. This keeps
@@ -127,7 +312,89 @@ extern "js" fn install_surface_interactions(
   #|       }
   #|     }
   #|   };
+  #|   const applyExcelFormulaMetadata = () => {
+  #|     if (kind !== "excel") return;
+  #|     const node = host.querySelector(".office-formula-metadata");
+  #|     if (!node) return;
+  #|     let metadata = null;
+  #|     try { metadata = JSON.parse(node.textContent || "{}"); }
+  #|     catch (_) { metadata = null; }
+  #|     if (!metadata || !metadata.sheets) return;
+  #|     for (const section of host.querySelectorAll("section[data-sheet]")) {
+  #|       const sheet = section.dataset.sheet || "Sheet";
+  #|       const formulas = metadata.sheets[sheet] || {};
+  #|       for (const cell of section.querySelectorAll("td[data-cell]")) {
+  #|         const formula = formulas[cell.dataset.cell];
+  #|         if (typeof formula === "string") cell.dataset.formula = formula;
+  #|       }
+  #|     }
+  #|     node.remove();
+  #|   };
+  #|   const decorateExcelGrid = (table) => {
+  #|     if (!table || table.dataset.officeGridDecorated === "true") return;
+  #|     const colgroup = table.querySelector("colgroup");
+  #|     const rows = Array.from(table.rows);
+  #|     let columnCount = colgroup ? colgroup.querySelectorAll("col").length : 0;
+  #|     if (columnCount === 0) {
+  #|       for (const row of rows) {
+  #|         let width = 0;
+  #|         for (const cell of row.querySelectorAll("td"))
+  #|           width += Math.max(1, cell.colSpan || 1);
+  #|         columnCount = Math.max(columnCount, width);
+  #|       }
+  #|     }
+  #|     if (colgroup) {
+  #|       const rowHeaderCol = document.createElement("col");
+  #|       rowHeaderCol.className = "office-row-header-column";
+  #|       rowHeaderCol.style.width = "44px";
+  #|       colgroup.insertBefore(rowHeaderCol, colgroup.firstChild);
+  #|     }
+  #|     const head = document.createElement("thead");
+  #|     head.className = "office-grid-column-headings";
+  #|     const headRow = document.createElement("tr");
+  #|     const corner = document.createElement("th");
+  #|     corner.className = "office-grid-corner";
+  #|     corner.setAttribute("aria-label", "Select all cells");
+  #|     headRow.appendChild(corner);
+  #|     for (let column = 1; column <= columnCount; column++) {
+  #|       const heading = document.createElement("th");
+  #|       heading.className = "office-column-heading";
+  #|       heading.scope = "col";
+  #|       heading.textContent = columnName(column);
+  #|       headRow.appendChild(heading);
+  #|     }
+  #|     head.appendChild(headRow);
+  #|     const body = table.tBodies[0];
+  #|     if (body) {
+  #|       for (const row of Array.from(body.rows)) {
+  #|         const firstCell = row.querySelector("td[data-row]");
+  #|         const rowNumber = firstCell ? firstCell.dataset.row : String(row.rowIndex);
+  #|         const heading = document.createElement("th");
+  #|         heading.className = "office-row-heading";
+  #|         heading.scope = "row";
+  #|         heading.textContent = rowNumber;
+  #|         row.insertBefore(heading, row.firstChild);
+  #|       }
+  #|     }
+  #|     table.insertBefore(head, body || table.firstChild);
+  #|     for (const cell of table.querySelectorAll("td[data-cell]")) {
+  #|       cell.setAttribute("role", "gridcell");
+  #|     }
+  #|     table.dataset.officeGridDecorated = "true";
+  #|   };
   #|   ensureExcelCellMetadata();
+  #|   applyExcelFormulaMetadata();
+  #|   if (kind === "excel") {
+  #|     for (const table of host.querySelectorAll("section[data-sheet] table"))
+  #|       decorateExcelGrid(table);
+  #|   }
+  #|   enhanceExcelSurface();
+  #|   applyExcelObjectLayout();
+  #|   if (kind === "excel") {
+  #|     add(window, "resize", applyExcelObjectLayout);
+  #|     if (document.fonts && document.fonts.ready)
+  #|       document.fonts.ready.then(applyExcelObjectLayout).catch(() => {});
+  #|   }
   #|
   #|   // SVG text is selected with the browser's native Range. Reader-backed
   #|   // metadata is trusted only when its paragraph-relative span covers the
@@ -248,8 +515,8 @@ extern "js" fn install_surface_interactions(
   #|   };
   #|   const clearCells = (table) => {
   #|     if (!table) return;
-  #|     for (const cell of table.querySelectorAll("td.office-cell-selected"))
-  #|       cell.classList.remove("office-cell-selected");
+  #|     for (const cell of table.querySelectorAll("td.office-cell-selected, td.office-cell-active"))
+  #|       cell.classList.remove("office-cell-selected", "office-cell-active");
   #|   };
   #|   const selectCells = (anchor, active) => {
   #|     const table = anchor && anchor.closest("table");
@@ -269,6 +536,10 @@ extern "js" fn install_surface_interactions(
   #|         selected.push(cell);
   #|       }
   #|     }
+  #|     active.classList.add("office-cell-active");
+  #|     const rangeStart = `${columnName(left)}${top}`;
+  #|     const rangeEnd = `${columnName(right)}${bottom}`;
+  #|     updateExcelFormulaBar(active, rangeStart === rangeEnd ? rangeStart : `${rangeStart}:${rangeEnd}`);
   #|     selected.sort((l, r) => { const a = cellCoordinates(l), b = cellCoordinates(r);
   #|       return a.row - b.row || a.col - b.col; });
   #|     return { cells: selected, top, bottom, left, right };
@@ -323,4 +594,12 @@ extern "js" fn install_surface_interactions(
   #|   add(document, "selectionchange", selectionChanged);
   #|   if (kind === "excel") add(host, "dragstart", (event) => event.preventDefault());
   #|   host.__officeViewerCleanup = () => { for (const cleanup of cleanups) cleanup(); host.__officeViewerCleanup = null; };
+  #| }
+
+///|
+#cfg(target="js")
+extern "js" fn dispose_surface_interactions(surface_id : String) =
+  #| (id) => {
+  #|   const host = document.getElementById(id);
+  #|   if (host && host.__officeViewerCleanup) host.__officeViewerCleanup();
   #| }

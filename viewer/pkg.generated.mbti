@@ -11,6 +11,8 @@ pub let default_selection_preview_utf16 : Int
 
 pub let default_selection_source_anchors : Int
 
+pub fn dispose_interactions_command(String) -> @cmd.Cmd
+
 pub fn document_kind(String) -> DocumentKind?
 
 pub fn interactions_command(SurfaceConfig, (String) -> @cmd.Cmd) -> @cmd.Cmd

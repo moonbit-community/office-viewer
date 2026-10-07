@@ -18,17 +18,26 @@ pub extend SurfaceConfig with Eq::{equal, not_equal}
 /// inside its own layout.
 pub fn render_surface(config : SurfaceConfig) -> @html.Html {
   if config.surface_html == "" {
-    @html.div(class="surface-empty", [
-      @html.div([
-        @html.span(class="brand-mark", "Office Viewer"),
-        @html.span("\nNo document loaded."),
-      ]),
-    ])
+    // Keep the root element and its id mounted even when no Office document
+    // is active. Embedded hosts use this stable node to retire listeners when
+    // a file tab switches back to the code/Markdown viewer.
+    @html.div(
+      id=config.surface_id,
+      class="surface office-viewer-surface office-viewer-surface-empty moonbit-viewer-surface-hidden",
+      [
+        @html.div(class="surface-empty", [
+          @html.div([
+            @html.span(class="brand-mark", "Office Viewer"),
+            @html.span("\nNo document loaded."),
+          ]),
+        ]),
+      ],
+    )
   } else {
     let class_name = match config.kind {
-      Some(Word) => "surface word-surface word-mode"
-      Some(Excel) => "surface sheet-surface sheet-mode"
-      None => "surface"
+      Some(Word) => "surface office-viewer-surface word-surface word-mode"
+      Some(Excel) => "surface office-viewer-surface sheet-surface sheet-mode"
+      None => "surface office-viewer-surface"
     }
     @html.div(
       id=config.surface_id,
@@ -56,6 +65,18 @@ pub fn interactions_command(
         selection => scheduler.add(on_selection(selection)),
       )
     },
+    kind=@cmd.after_render,
+  )
+}
+
+///|
+/// Retire the browser listeners owned by one surface. The surface root stays
+/// mounted so Rabbita can reuse it across tab switches; this command clears
+/// the window-level pointer and selection listeners before the next document
+/// is shown.
+pub fn dispose_interactions_command(surface_id : String) -> @rabbita.Cmd {
+  @cmd.custom_cmd(
+    _ => dispose_surface_interactions(surface_id),
     kind=@cmd.after_render,
   )
 }

@@ -9,7 +9,10 @@ The browser entry is `cmd/browser`. DOCX files are parsed by
 `moonbitlang/pagelayout/docx`, paginated into a `PageModel`, and emitted as
 page SVG. XLSX files are parsed by `moonbitlang/mbtexcel` and rendered by
 `xlsx2html`, preserving workbook styles, merged cells, images, charts, and
-formula text within the renderer's current limits.
+formula results. Cached OOXML values are used when present; uncached formulas
+are evaluated by `office.mbt` where the formula engine supports them, and an
+unsupported formula remains visibly marked as pending instead of being
+silently replaced with an incorrect value.
 
 ## Run locally
 

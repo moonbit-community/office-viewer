@@ -3,15 +3,22 @@ import {
   "moonbit-community/rabbita/cmd",
   "moonbit-community/rabbita/html",
   "moonbitlang/core/json",
+  "moonbitlang/core/string",
   "moonbitlang/docx2html",
   "moonbitlang/docx2html/document",
   "moonbitlang/docx2html/docx" @reader,
   "moonbitlang/mbtexcel",
+  "moonbitlang/mbtexcel/inspect",
+  "moonbitlang/mbtexcel/xlsx",
   "moonbitlang/mbtexcel/xlsx2html",
   "moonbitlang/pagelayout",
   "moonbitlang/pagelayout/docx",
   "moonbitlang/pagelayout/svg",
 }
+
+import {
+  "moonbitlang/mbtexcel/demos",
+} for "wbtest"
 
 warnings = "-alert_experimental-alert_xss_vulnerable"
 
