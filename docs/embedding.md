@@ -44,10 +44,32 @@ preview or source-anchor bound. A deferred result is a reference for a later
 `office.mbt` read; it is not an instruction to guess text from the rendered
 SVG or HTML.
 
-The clean upstream `pagelayout/svg` backend currently exposes no OOXML source
-map. Word selection therefore emits the selected text, physical page, UTF-16
-fragment spans, and a bounding rectangle with `stability: "physical-only"`.
-It omits a canonical selector until a renderer supplies a source map. This
-keeps the Agent handoff honest and lets a future provenance-capable
-`office.mbt` renderer improve the same envelope without changing the viewer
-mounting API.
+The upstream `pagelayout/svg` backend has no OOXML source map. The viewer adds
+one only where its annotated-reader paragraph/run projection joins the rendered
+text exactly. Otherwise Word selection retains its physical page/fragment
+range with `stability: "physical-only"` and omits a canonical selector. The same
+fail-closed join governs contextual comment placement; paragraph context is
+never claimed to be the exact commented character range.
+
+## Selecting comments and Notes
+
+The same `interactions_command` callback now emits `kind: "annotation"` when the
+user selects a contextual comment card or highlights part of its body. Keep this
+distinct from `word` and `excel` document selections. The envelope identifies the
+source file and SHA-256, annotation ID/type, author/thread metadata, original
+source anchors, and the selected annotation-body UTF-16 span. It never reuses a
+paragraph or cell selector as a comment-body address.
+
+`select_annotation_command(surface_id, item, on_result~)` supports host-owned
+annotation lists, including entries that cannot be positioned in the preview.
+`annotation_selection(item, start_utf16~, end_utf16~, scope="text")` constructs
+the same projection without the browser. Omitting offsets selects the whole
+body. Browser commands verify that the item still belongs to the installed
+snapshot; pure projection assumes a host-provided item from that snapshot.
+
+Full/preview/deferred materialization all accept this selection kind. Preview
+and deferred retain metadata and the body span without carrying the unselected
+comment body. Resolving a deferred annotation uses `read_annotations` on the
+same file bytes/hash and item ID; `source.readable` remains false for the existing
+`office.selector/1` document readback route. See the
+[annotation selection contract](selection-model.md#annotation-body-selections).

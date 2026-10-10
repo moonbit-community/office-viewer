@@ -383,6 +383,14 @@ fn projected_selection(
 ) -> Json {
   if mode is Full {
     let fields = selection.fields.copy()
+    if selection.kind == "annotation" {
+      fields.set(
+        "annotation",
+        annotation_selection_reference(
+          selection.fields.get("annotation").unwrap_or(Json::null()),
+        ),
+      )
+    }
     match materialized_text {
       Some(value) => fields.set("text", Json::string(value))
       None => ()
@@ -407,18 +415,34 @@ fn projected_selection(
     copy_optional_field(selection.fields, fields, "selector")
     copy_optional_field(selection.fields, fields, "stability")
     copy_optional_field(selection.fields, fields, "pages")
+    if selection.kind == "annotation" {
+      copy_optional_field(selection.fields, fields, "document")
+      copy_optional_field(selection.fields, fields, "annotation_range")
+      fields.set(
+        "annotation",
+        annotation_selection_reference(
+          selection.fields.get("annotation").unwrap_or(Json::null()),
+        ),
+      )
+    }
     Json::object(fields)
   }
 }
 
 ///|
 fn source_readable(selection : CanonicalSelection) -> Bool {
-  !selection.selectors.is_empty() && selection.file != ""
+  selection.kind != "annotation" &&
+  !selection.selectors.is_empty() &&
+  selection.file != ""
 }
 
 ///|
 fn source_reason(selection : CanonicalSelection) -> String? {
-  if source_readable(selection) {
+  if selection.kind == "annotation" {
+    Some(
+      "annotation bodies require read_annotations on the same SHA-256 snapshot; a document selector would address the surrounding text, not the comment",
+    )
+  } else if source_readable(selection) {
     None
   } else if selection.file == "" {
     Some("selection.file is empty")
@@ -474,7 +498,14 @@ fn materialized_json(
     ("file", Json::string(selection.file)),
     ("format", Json::string(selection.format)),
     ("kind", Json::string(selection.kind)),
-    ("selector_schema", Json::string("office.selector/1")),
+    (
+      "selector_schema",
+      if selection.kind == "annotation" {
+        Json::null()
+      } else {
+        Json::string("office.selector/1")
+      },
+    ),
     ("selectors", json_string_array(selection.selectors)),
     ("anchors", Json::array(source_anchors)),
     ("anchor_count", json_number(selection.source_anchors.length())),
@@ -484,6 +515,30 @@ fn materialized_json(
     ),
     ("readable", Json::boolean(source_readable(selection))),
   ]
+  if selection.kind == "annotation" {
+    source_fields.push(
+      ("annotation_schema", Json::string("office.annotations.v1")),
+    )
+    source_fields.push(("reference_kind", Json::string("annotation")))
+    source_fields.push(("resolve_with", Json::string("read_annotations")))
+    source_fields.push(
+      ("document", selection.fields.get("document").unwrap_or(Json::null())),
+    )
+    source_fields.push(
+      (
+        "annotation",
+        annotation_selection_reference(
+          selection.fields.get("annotation").unwrap_or(Json::null()),
+        ),
+      ),
+    )
+    source_fields.push(
+      (
+        "annotation_range",
+        selection.fields.get("annotation_range").unwrap_or(Json::null()),
+      ),
+    )
+  }
   match source_reason(selection) {
     Some(reason) => source_fields.push(("reason", Json::string(reason)))
     None => ()

@@ -128,6 +128,10 @@ comments.” The envelope makes this limitation explicit even for an empty file.
 
 Call the existing `@viewer.interactions_command` after rendering the surface.
 It marks visible cells and mapped Word paragraph contexts, using the same JSON.
+Markers open one contextual comment card alongside the document. The page SVG
+and worksheet source content are unchanged. Word placement remains paragraph
+context, not an exact commented range. Linked replies shown with a parent's
+context are labeled as such; their original anchors are not modified.
 Hosts can invoke:
 
 ```mbt
@@ -138,7 +142,15 @@ Hosts can invoke:
 )
 ```
 
-The callback reports whether a current rendered target was found. The
+The callback reports whether a current rendered target was found. To select an
+available body (also for off-preview or unanchored items), hosts can invoke
+`@viewer.select_annotation_command(surface_id, item, on_result~)`. It emits the
+normal interactions callback with `office.selection.v1`, `kind: "annotation"`.
+Native highlighting within the contextual body emits the selected substring and
+its exact UTF-16 range; the **Select comment** action emits the whole body. Both
+commands require matching current file/hash/item identity. See
+[`selection-model.md`](selection-model.md#annotation-body-selections) for the
+contract and bounded preview/deferred behavior. The
 standalone Comments panel keeps the list available on failure. It also exposes
 the whole JSON and reports clipboard failures honestly. All comment content is
 rendered as text; metadata escapes `<` before insertion in an inert data block.
