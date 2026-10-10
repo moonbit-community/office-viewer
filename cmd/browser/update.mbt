@@ -68,6 +68,10 @@ fn update(
                 surface_html: document.surface_html,
                 item_count: document.item_count,
                 warning: document.warning,
+                annotations: document.annotations,
+                copying_annotations: false,
+                annotations_copy_request: model.annotations_copy_request + 1,
+                annotations_copy_status: "",
                 status: "Ready. Drag across text or cells to create an Agent selection.",
                 selection: "",
                 loading: false,
@@ -112,6 +116,10 @@ fn update(
                 surface_html: document.surface_html,
                 item_count: document.item_count,
                 warning: document.warning,
+                annotations: document.annotations,
+                copying_annotations: false,
+                annotations_copy_request: model.annotations_copy_request + 1,
+                annotations_copy_status: "",
                 status: "Ready. Drag across text or cells to create an Agent selection.",
                 selection: "",
                 loading: false,
@@ -161,7 +169,77 @@ fn update(
       (next, visual_command(next))
     }
     ToggleInspector =>
-      ({ ..model, inspector_open: !model.inspector_open, }, @rabbita.none)
+      (
+        {
+          ..model,
+          inspector_open: !model.inspector_open,
+          comments_open: false,
+        },
+        @rabbita.none,
+      )
+    ToggleComments =>
+      (
+        { ..model, comments_open: !model.comments_open, inspector_open: false, },
+        @rabbita.none,
+      )
+    FocusAnnotation(annotation) =>
+      (
+        model,
+        @viewer.focus_annotation_command("document-surface", annotation, on_result=found => {
+          emit(AnnotationFocused(found))
+        }),
+      )
+    AnnotationFocused(found) =>
+      (
+        {
+          ..model,
+          status: if !found {
+            "Location unavailable in this preview. The comment and source location remain in Comments."
+          } else if model.kind is Some(Word) {
+            "Paragraph context shown. The exact commented text range is unavailable."
+          } else {
+            "Note cell shown in the preview."
+          },
+        },
+        @rabbita.none,
+      )
+    CopyAnnotations => {
+      if model.kind is None || model.copying_annotations {
+        return (model, @rabbita.none)
+      }
+      let request = model.annotations_copy_request + 1
+      (
+        {
+          ..model,
+          copying_annotations: true,
+          annotations_copy_request: request,
+          annotations_copy_status: "Copying comments JSON...",
+        },
+        @cmd.custom_cmd(scheduler => {
+          copy_annotations_to_clipboard(model.annotations.stringify(indent=2), copied => {
+            scheduler.add(emit(AnnotationsCopied(request, copied)))
+          })
+        }),
+      )
+    }
+    AnnotationsCopied(request, copied) => {
+      // A pending clipboard operation must not update a newly loaded file.
+      if request != model.annotations_copy_request {
+        return (model, @rabbita.none)
+      }
+      (
+        {
+          ..model,
+          copying_annotations: false,
+          annotations_copy_status: if copied {
+            "Comments JSON copied to the clipboard."
+          } else {
+            "Clipboard unavailable. Select and copy the JSON below."
+          },
+        },
+        @rabbita.none,
+      )
+    }
     CopySelection => {
       copy_to_clipboard(model.selection)
       (

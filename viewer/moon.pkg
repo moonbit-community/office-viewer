@@ -4,6 +4,7 @@ import {
   "moonbit-community/rabbita/html",
   "moonbitlang/core/json",
   "moonbitlang/core/string",
+  "moonbitlang/x/crypto",
   "moonbitlang/docx2html",
   "moonbitlang/docx2html/document",
   "moonbitlang/docx2html/docx" @reader,

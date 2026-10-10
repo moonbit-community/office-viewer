@@ -583,9 +583,35 @@ button, input { font: inherit; }
 
 .side-panel { display: none; width: 290px; overflow: auto; padding: 16px; border-left: 1px solid var(--border); background: #fff; }
 .side-panel.open { display: block; }
+.office-viewer-surface td.office-has-annotation { position: relative; }
+.office-viewer-surface td.office-has-annotation::after { content: ""; position: absolute; top: 0; right: 0; border-top: 7px solid #b45309; border-left: 7px solid transparent; pointer-events: none; }
+.office-viewer-surface svg text.office-has-annotation { text-decoration: underline dotted #b45309; }
+.office-viewer-surface td.office-annotation-focus { outline: 2px solid #b45309; outline-offset: -2px; }
+.office-viewer-surface svg text.office-annotation-focus { fill: #92400e; text-decoration: underline solid #b45309; }
 .side-panel h2 { margin: 0 0 12px; font-size: 14px; }
 .side-panel-actions { display: flex; gap: 6px; margin-bottom: 12px; }
 .selection-content { margin-bottom: 12px; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.comments-toggle.active { border-color: var(--accent); background: var(--accent-soft); color: #1d4ed8; }
+.status-comments { white-space: nowrap; }
+.comments-panel { width: 340px; max-width: 100%; flex: 0 0 340px; }
+.comments-panel .annotation-panel-hint,
+.comments-panel .annotation-empty { margin-bottom: 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.comments-panel .annotation-warning { margin-bottom: 10px; padding: 8px; border: 1px solid #f2d39d; border-radius: 5px; background: #fff9ed; color: #7c541b; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.comments-panel .annotation-card { margin-bottom: 12px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; }
+.comments-panel .annotation-reply { margin-left: 12px; border-left: 3px solid var(--border); }
+.comments-panel .annotation-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.comments-panel .annotation-author { font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
+.comments-panel .annotation-kind { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
+.comments-panel .annotation-meta,
+.comments-panel .annotation-hint { margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.comments-panel .annotation-text { margin: 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
+.comments-panel .annotation-location { margin-top: 9px; overflow-wrap: anywhere; font-size: 11px; line-height: 1.4; }
+.comments-panel .annotation-locate { margin-top: 8px; min-height: 28px; font-size: 11px; }
+.comments-panel .annotation-json-details { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; }
+.comments-panel .annotation-json-details > summary { cursor: pointer; }
+.comments-panel .annotation-json-actions { margin-top: 10px; }
+.comments-panel .annotation-copy-status { margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.comments-panel .annotation-json { max-height: 360px; overflow: auto; margin: 10px 0 0; padding: 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--toolbar); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; line-height: 1.5; user-select: text; }
 .side-panel dl { margin: 0; font-size: 12px; }
 .side-panel dt { margin-top: 10px; color: var(--muted); }
 .side-panel dd { margin: 3px 0 0; white-space: pre-wrap; word-break: break-word; }

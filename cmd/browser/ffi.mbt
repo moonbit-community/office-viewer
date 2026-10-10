@@ -81,3 +81,26 @@ extern "js" fn copy_to_clipboard(text : String) =
   #|     navigator.clipboard.writeText(text).catch(() => {});
   #|   }
   #| }
+
+///|
+// Report completion only when the Clipboard API promise resolves. Unsupported
+// browsers and denied access retain the selectable JSON as a manual fallback.
+#cfg(target="js")
+extern "js" fn copy_annotations_to_clipboard(
+  text : String,
+  on_complete : (Bool) -> Unit,
+) =
+  #| (text, onComplete) => {
+  #|   try {
+  #|     if (!globalThis.navigator?.clipboard?.writeText) {
+  #|       onComplete(false);
+  #|       return;
+  #|     }
+  #|     Promise.resolve(navigator.clipboard.writeText(text)).then(
+  #|       () => onComplete(true),
+  #|       () => onComplete(false),
+  #|     );
+  #|   } catch (_) {
+  #|     onComplete(false);
+  #|   }
+  #| }

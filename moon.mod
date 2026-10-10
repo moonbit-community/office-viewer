@@ -7,6 +7,7 @@ import {
   "moonbitlang/docx2html@0.6.1",
   "moonbitlang/mbtexcel@0.2.0",
   "moonbitlang/pagelayout@0.2.0",
+  "moonbitlang/x@0.5.5",
 }
 
 license = "Apache-2.0"

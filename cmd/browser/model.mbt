@@ -18,6 +18,7 @@ struct LoadedDocument {
   surface_html : String
   item_count : Int
   warning : String
+  annotations : Json
 } derive(Eq)
 
 ///|
@@ -33,6 +34,11 @@ struct Model {
   query : String
   selection : String
   inspector_open : Bool
+  annotations : Json
+  comments_open : Bool
+  copying_annotations : Bool
+  annotations_copy_request : Int
+  annotations_copy_status : String
   prefer_system_fonts : Bool
   loading : Bool
 } derive(Eq)
@@ -51,6 +57,11 @@ fn initial_model() -> Model {
     query: "",
     selection: "",
     inspector_open: false,
+    annotations: Json::null(),
+    comments_open: false,
+    copying_annotations: false,
+    annotations_copy_request: 0,
+    annotations_copy_status: "",
     prefer_system_fonts: false,
     loading: false,
   }
@@ -68,6 +79,11 @@ enum Msg {
   SelectionChanged(String)
   ToggleSystemFonts
   ToggleInspector
+  ToggleComments
+  FocusAnnotation(Json)
+  AnnotationFocused(Bool)
+  CopyAnnotations
+  AnnotationsCopied(Int, Bool)
   CopySelection
   ClearSelection
 }
