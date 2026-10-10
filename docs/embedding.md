@@ -1,33 +1,75 @@
 # Embedding the viewer surface
 
-The `moonbit-community/office-viewer/viewer` package is the reusable part of
-the project. It is a JS/Rabbita component package, while the bytes and the
-canonical file path remain owned by the host application.
+The `moonbit-community/office-viewer/viewer` package provides a JS/Rabbita
+surface. The host owns file bytes, the canonical file path, application state,
+toolbars, and the policy for sending selections to an agent.
 
-An embedded host follows this sequence:
+## DOCX and XLSX
 
-1. The native host reads a DOCX or XLSX file and keeps the path that it passes
-   to `office.mbt`.
-2. The host transfers the bytes and path to its JS frontend.
-3. The frontend calls `render_document(name, file, bytes)` and stores the
-   returned `RenderedDocument` in its own state.
-4. The frontend renders `render_surface(SurfaceConfig { ... })` inside its
-   existing Rabbita layout.
-5. After the state update, it returns `interactions_command(config, callback)`
-   and `visual_command(config)` from the update command batch.
+1. Read the file bytes and retain the path used by the host's `office.mbt`
+   command layer.
+2. Call `render_document(name, file, bytes)` and store its `RenderedDocument`.
+3. Render `render_surface(config)` inside the existing Rabbita layout.
+4. Return `interactions_command(config, on_selection)` and
+   `visual_command(config)` after the render.
 
-`SurfaceConfig.surface_id` is host-configurable, so multiple viewers can be
-mounted without sharing DOM ids. `document_file` is passed unchanged into the
-selection envelope. The standalone demo uses `/mock/office/<name>`; OpenSeek
-must use the real path understood by its native `office.mbt` command layer.
+`SurfaceConfig.surface_id` is host-configurable. Each concurrent surface must
+have a unique DOM id. `document_file` is passed unchanged into selections;
+the demo uses `/mock/office/<name>` because browser uploads have no native path.
 
-Excel selection emits a canonical `office.selector/1` address. A single cell
-uses `/xlsx/sheet[name="Data"]/cell[B4]`; a rectangular drag uses
-`/xlsx/sheet[name="Data"]/range[B4:D9]`. The browser derives these addresses
-from the rendered table, including merged cell spans.
+Word source metadata is built within the viewer by reading the same bytes
+through `office.mbt`'s annotated reader and joining paragraph/run projections
+to the PageModel text. Validated matches carry canonical paragraph selectors
+and paragraph-relative UTF-16 spans. Uncertain joins retain physical anchors
+without guessed selectors. Excel emits canonical `office.selector/1` cell
+and range selectors derived from worksheet coordinates, including merged cells.
 
-The host chooses how much selected content to send to an Agent by calling one
-of the viewer's materialization APIs after receiving the callback JSON:
+## PDF
+
+PDF loading is asynchronous. `document_kind(name)` returns `Some(Pdf)` for a
+PDF filename; the synchronous `render_document` returns an error directing the
+host to `load_pdf_command`.
+
+Render a `SurfaceConfig` with `kind: Some(Pdf)` and
+`surface_html: pdf_surface_html()`, then return:
+
+```mbt
+@viewer.load_pdf_command(config, bytes, on_selection, on_state)
+```
+
+The callbacks return Rabbita commands. Selection events contain
+`office.selection.v1` JSON. State events are JSON objects:
+
+| `status` | Fields |
+| --- | --- |
+| `loading` | `loaded`, `total` |
+| `ready` | `pages`, `document` identity |
+| `page` | `page` (one-based) |
+| `scale` | `zoom` (integer percent) |
+| `rotation` | `rotation` (viewer rotation in degrees) |
+| `search` | `current`, `total`, optional PDF.js find `state` |
+| `password` | `incorrect` |
+| `error`, `selection-error` | `message` |
+
+Retain a file generation or request token in asynchronous callbacks and discard
+events from an older file. The standalone demo demonstrates this pattern.
+
+Use `visual_command(config)` to update zoom and search. Additional commands are
+`pdf_page_command`, `pdf_rotation_command`, `pdf_fit_width_command`,
+`pdf_find_command`, and `pdf_password_command`. Rotation is a multiple of 90
+degrees. Password values are submitted to the active loading task and are not
+included in selection metadata. Cancel a password prompt by disposing the
+session.
+
+`pdf_document_info(surface_id)` is asynchronous and returns
+`Result[String, String]`. Its `office.pdf.document.v1` JSON contains the file
+path, identity, information dictionary, XMP metadata, outline, and permissions
+reported by PDF.js. Call it after the document is ready. The demo currently
+exposes page navigation rather than an outline sidebar.
+
+## Materialization and resolution
+
+After receiving selection JSON, choose an explicit context policy:
 
 ```mbt
 let full = @viewer.materialize_selection_full(selection_json)
@@ -35,14 +77,11 @@ let preview = @viewer.materialize_selection_preview(selection_json, 1000)
 let deferred = @viewer.materialize_selection_deferred(selection_json)
 ```
 
-All three return `office.selection.materialized.v1`. `full` carries exact text,
-`preview` carries a deterministic head/tail excerpt and UTF-16 omission counts,
-and `deferred` carries `file`, canonical selectors, and compact source anchors
-without the selected text. The generic `materialize_selection` entry point
-accepts `SelectionMaterializationOptions` when the host needs a different
-preview or source-anchor bound. A deferred result is a reference for a later
-`office.mbt` read; it is not an instruction to guess text from the rendered
-SVG or HTML.
+These return `office.selection.materialized.v1`. `full` retains exact text;
+`preview` contains a deterministic head/tail excerpt with UTF-16 omission counts;
+`deferred` omits selected text. Use `materialize_selection` with
+`SelectionMaterializationOptions` to configure the excerpt and compact-anchor
+bounds. Hosts must check `source.readable` before relying on a reference.
 
 The upstream `pagelayout/svg` backend has no OOXML source map. The viewer adds
 one only where its annotated-reader paragraph/run projection joins the rendered
@@ -73,3 +112,50 @@ comment body. Resolving a deferred annotation uses `read_annotations` on the
 same file bytes/hash and item ID; `source.readable` remains false for the existing
 `office.selector/1` document readback route. See the
 [annotation selection contract](selection-model.md#annotation-body-selections).
+
+DOCX/XLSX selections expose the existing file and `office.mbt` selectors. PDF
+selections expose `source.reference` using `office.pdf.text-range.v1` and no
+`office.mbt` selector. Resolve them with:
+
+```mbt
+let result = @viewer.resolve_pdf_selection(surface_id, materialized_json)
+```
+
+This is an asynchronous `Result[String, String]` API returning a reconstructed
+full `office.selection.v1` envelope. It accepts full, preview, or deferred
+materializations, a raw selection, or a standalone PDF reference. It validates
+the path, SHA-256, byte length, page count, parser/version, extraction options,
+and endpoints, then reads the PDF.js text items again. It does not depend on
+retaining selected text in an application cache.
+
+Resolution requires an active PDF surface. For a persisted reference, reopen
+identical bytes with the same file path and PDF.js version, then resolve it
+against that surface. A changed document or parser version requires a new
+selection. The detailed anchors may be bounded to 64 entries while the
+complete start/end reference continues to cover the full selection.
+
+## Assets and lifecycle
+
+Run `npm ci` and `moon run tools/prepare-browser-assets.mbtx` before building
+the standalone app. An embedded host must serve `public/pdf-runtime.js`,
+`public/vendor/pdfjs/`, and the PDF.js viewer stylesheet. The default runtime
+URL is `./pdf-runtime.js`, relative to `document.baseURI`. Pass `runtime_url`
+to `load_pdf_command` when the host uses a different asset location. The
+runtime resolves its worker, CMaps, standard fonts, WASM codecs, and ICC profiles
+relative to its own URL, making a nested deployment path possible without a CDN.
+
+The PDF.js `.page` element requires `box-sizing: content-box`; protect that rule
+from global CSS resets. `.pdf-container` must be positioned absolutely inside a
+bounded surface and own its scrolling. The demo stylesheet contains these rules.
+
+PDF.js owns the children of the PDF surface. Preserve `surface_html` while
+updating toolbar/selection state so Rabbita does not replace that subtree.
+Mounting another document retires the previous runtime. Call
+`dispose_interactions_command(surface_id)` while the old root still exists
+before removing or replacing it. Cleanup cancels the worker/loading task,
+listeners, selection timer, and page cache. Multiple surfaces use separate
+sessions and unique ids.
+
+PDF document JavaScript, XFA, and editing are disabled. PDF annotations use
+the read-only display layer; external links open in a separate tab. OCR and
+inferred table/paragraph extraction are outside the current PDF surface.

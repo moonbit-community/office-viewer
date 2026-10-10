@@ -41,8 +41,10 @@ async fn read_selected_file(input_id : String) -> FilePayload? noraise {
   try {
     let blob = selected_file_blob(input_id).to_option()
     match blob {
-      Some(blob) =>
-        Some({ name: selected_file_name(input_id), bytes: blob.bytes(), })
+      Some(blob) => {
+        let name = selected_file_name(input_id)
+        Some({ name, bytes: blob.bytes(), })
+      }
       None => None
     }
   } catch {
@@ -56,8 +58,10 @@ async fn read_dropped_file(event : @dom.DragEvent) -> FilePayload? noraise {
     event.prevent_default()
     let blob = dropped_file_blob(event).to_option()
     match blob {
-      Some(blob) =>
-        Some({ name: dropped_file_name(event), bytes: blob.bytes(), })
+      Some(blob) => {
+        let name = dropped_file_name(event)
+        Some({ name, bytes: blob.bytes(), })
+      }
       None => None
     }
   } catch {
@@ -70,7 +74,7 @@ async fn read_dropped_file(event : @dom.DragEvent) -> FilePayload? noraise {
 extern "js" fn open_file_picker(input_id : String) =
   #| (id) => {
   #|   const input = document.getElementById(id);
-  #|   if (input) input.click();
+  #|   if (input) { input.value = ""; input.click(); }
   #| }
 
 ///|

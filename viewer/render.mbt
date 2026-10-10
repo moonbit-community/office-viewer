@@ -2,6 +2,7 @@
 pub(all) enum DocumentKind {
   Word
   Excel
+  Pdf
 } derive(Eq)
 
 ///|
@@ -31,6 +32,8 @@ pub fn document_kind(name : String) -> DocumentKind? {
     Some(Word)
   } else if lower.has_suffix(".xlsx") {
     Some(Excel)
+  } else if lower.has_suffix(".pdf") {
+    Some(Pdf)
   } else {
     None
   }
@@ -298,7 +301,7 @@ pub fn render_document(
 ) -> Result[RenderedDocument, String] {
   let kind = match document_kind(name) {
     Some(kind) => kind
-    None => return Err("Only .docx and .xlsx files are supported.")
+    None => return Err("Only .docx, .xlsx, and .pdf files are supported.")
   }
   try {
     match kind {
@@ -370,6 +373,10 @@ pub fn render_document(
           warning: "Excel cells are read-only. Formula results are normalized in the rendering copy when office.mbt can evaluate them; drawing anchors retain their source cell, offsets, and dimensions for browser layout. Cell addresses are derived from the rendered table coordinates and use the canonical office.xlsx selector shape.",
         })
       }
+      Pdf =>
+        Err(
+          "PDF rendering is asynchronous; mount pdf_surface_html() and use load_pdf_command().",
+        )
     }
   } catch {
     error => Err(error.to_string())

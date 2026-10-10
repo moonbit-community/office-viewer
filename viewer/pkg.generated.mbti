@@ -9,6 +9,8 @@ import {
 // Values
 pub fn annotation_selection(Json, start_utf16? : Int, end_utf16? : Int, scope? : String) -> Result[Json, String]
 
+pub fn clear_selection_command(String) -> @cmd.Cmd
+
 pub let default_selection_preview_utf16 : Int
 
 pub let default_selection_source_anchors : Int
@@ -21,6 +23,8 @@ pub fn focus_annotation_command(String, Json, on_result? : (Bool) -> @cmd.Cmd) -
 
 pub fn interactions_command(SurfaceConfig, (String) -> @cmd.Cmd) -> @cmd.Cmd
 
+pub fn load_pdf_command(SurfaceConfig, Bytes, (String) -> @cmd.Cmd, (String) -> @cmd.Cmd, runtime_url? : String) -> @cmd.Cmd
+
 pub fn materialize_selection(String, SelectionMaterializationOptions) -> Result[String, String]
 
 pub fn materialize_selection_deferred(String) -> Result[String, String]
@@ -29,11 +33,27 @@ pub fn materialize_selection_full(String) -> Result[String, String]
 
 pub fn materialize_selection_preview(String, Int) -> Result[String, String]
 
+pub async fn pdf_document_info(String) -> Result[String, String] noraise
+
+pub fn pdf_find_command(String, Bool) -> @cmd.Cmd
+
+pub fn pdf_fit_width_command(String) -> @cmd.Cmd
+
+pub fn pdf_page_command(String, Int) -> @cmd.Cmd
+
+pub fn pdf_password_command(String, String) -> @cmd.Cmd
+
+pub fn pdf_rotation_command(String, Int) -> @cmd.Cmd
+
+pub fn pdf_surface_html() -> String
+
 pub fn read_annotations(String, String, Bytes) -> Result[Json, String]
 
 pub fn render_document(String, String, Bytes) -> Result[RenderedDocument, String]
 
 pub fn render_surface(SurfaceConfig) -> @html.Html
+
+pub async fn resolve_pdf_selection(String, String) -> Result[String, String] noraise
 
 pub fn select_annotation_command(String, Json, on_result? : (Bool) -> @cmd.Cmd) -> @cmd.Cmd
 
@@ -45,6 +65,7 @@ pub fn visual_command(SurfaceConfig) -> @cmd.Cmd
 pub(all) enum DocumentKind {
   Word
   Excel
+  Pdf
 } derive(Eq)
 pub fn DocumentKind::equal(Self, Self) -> Bool
 pub fn DocumentKind::not_equal(Self, Self) -> Bool

@@ -5,10 +5,37 @@ using @html {button, div, h2, input, span}
 using @rabbita {type Html}
 
 ///|
+fn icon(name : String) -> Html {
+  span(
+    class="office-icon office-icon-" + name,
+    attrs=@html.Attrs::build().aria_hidden("true"),
+    "",
+  )
+}
+
+///|
+fn tool_button(
+  name : String,
+  title : String,
+  action : @rabbita.Cmd,
+  disabled? : Bool = false,
+) -> Html {
+  button(
+    class="button icon",
+    title~,
+    disabled~,
+    attrs=@html.Attrs::build().aria_label(title),
+    on_click=action,
+    [icon(name)],
+  )
+}
+
+///|
 fn kind_label(kind : DocumentKind?) -> String {
   match kind {
     Some(Word) => "Word"
     Some(Excel) => "Excel"
+    Some(Pdf) => "PDF"
     None => ""
   }
 }
@@ -18,6 +45,7 @@ fn surface_class(model : Model) -> String {
   match model.kind {
     Some(Word) => "surface-wrap word-mode"
     Some(Excel) => "surface-wrap sheet-mode"
+    Some(Pdf) => "surface-wrap pdf-mode"
     None => "surface-wrap"
   }
 }
@@ -29,41 +57,179 @@ fn surface(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
       event.prevent_default()
       @rabbita.none
     })
-    .on_drop(event => emit(DropRequested(event)))
+    .on_drop(event => {
+      event.prevent_default()
+      emit(DropRequested(event))
+    })
   div(id="surface-wrap", class=surface_class(model), attrs=drop_attrs, [
     @viewer.render_surface(surface_config(model)),
   ])
 }
 
 ///|
-fn inspector(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
-  let panel_class = if model.inspector_open {
-    "side-panel open"
-  } else {
-    "side-panel"
+fn mode_button(
+  model : Model,
+  emit : @rabbita.Emit[Msg],
+  mode : @viewer.SelectionMaterializationMode,
+  label : String,
+) -> Html {
+  let selected = model.selection_mode == mode
+  button(
+    class=if selected { "mode-option active" } else { "mode-option" },
+    attrs=@html.Attrs::build().aria_pressed(
+      if selected {
+        "true"
+      } else {
+        "false"
+      },
+    ),
+    on_click=emit(SelectionModeChanged(mode)),
+    label,
+  )
+}
+
+///|
+fn resolved_text(value : String) -> String {
+  if value == "" {
+    return ""
   }
-  div(id="selection-panel", class=panel_class, [
-    h2("Selection"),
-    div(class="side-panel-actions", [
-      button(class="button", on_click=emit(CopySelection), "Copy"),
-      button(class="button", on_click=emit(ClearSelection), "Clear"),
+  let parsed = @json.parse(value) catch { _ => return value }
+  match parsed {
+    { "text": String(text), .. } => text
+    _ => value
+  }
+}
+
+///|
+fn inspector(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
+  div(
+    id="selection-panel",
+    class=if model.inspector_open { "side-panel open" } else { "side-panel" },
+    [
+      div(class="panel-heading", [
+        h2("Selection"),
+        tool_button("panel-right", "Close selection", emit(ToggleInspector)),
+      ]),
+      div(
+        class="mode-control",
+        attrs=@html.Attrs::build().role("group").aria_label("Selection output"),
+        [
+          mode_button(model, emit, @viewer.Full, "Full"),
+          mode_button(model, emit, @viewer.Preview, "Preview"),
+          mode_button(model, emit, @viewer.Deferred, "Deferred"),
+        ],
+      ),
+      div(class="side-panel-actions", [
+        tool_button(
+          "copy",
+          "Copy selection",
+          emit(CopySelection),
+          disabled=model.selection == "",
+        ),
+        tool_button(
+          "trash-2",
+          "Clear selection",
+          emit(ClearSelection),
+          disabled=model.selection == "",
+        ),
+        button(
+          class="button resolve-button",
+          hidden=model.kind != Some(Pdf),
+          disabled=model.selection == "" || model.resolving,
+          on_click=emit(ResolveSelection),
+          [
+            icon("scan-text"),
+            span(
+              if model.resolving {
+                "Resolving..."
+              } else {
+                "Resolve reference"
+              },
+            ),
+          ],
+        ),
+      ]),
+      @html.pre(
+        id="selection-output",
+        class="selection-content",
+        if model.selection == "" {
+          "No selection."
+        } else {
+          selection_output(model)
+        },
+      ),
+      div(class="resolved-content", hidden=model.resolved_selection == "", [
+        h2("Resolved Content"),
+        @html.pre(
+          id="resolved-output",
+          class="selection-content",
+          resolved_text(model.resolved_selection),
+        ),
+      ]),
+    ],
+  )
+}
+
+///|
+fn pdf_toolbar(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
+  div(class="pdf-toolbar", hidden=model.kind != Some(Pdf), [
+    div(class="pdf-page-control", [
+      tool_button(
+        "chevron-left",
+        "Previous page",
+        emit(PageChanged((model.page - 1).to_string())),
+        disabled=model.page <= 1 || model.loading,
+      ),
+      input(
+        input_type=Number,
+        id="pdf-page",
+        class="page-input",
+        min=1,
+        max=model.item_count,
+        value=model.page.to_string(),
+        on_change=emit.map(value => PageChanged(value)),
+        attrs=@html.Attrs::build().aria_label("Page number"),
+      ),
+      span(class="page-total", "/ \{model.item_count}"),
+      tool_button(
+        "chevron-right",
+        "Next page",
+        emit(PageChanged((model.page + 1).to_string())),
+        disabled=model.page >= model.item_count || model.loading,
+      ),
     ]),
-    div(
-      class="selection-content",
-      if model.selection == "" {
-        "No selection yet."
-      } else {
-        model.selection
-      },
-    ),
-    div(
-      class="selection-content",
-      if model.warning == "" {
-        ""
-      } else {
-        model.warning
-      },
-    ),
+    div(class="pdf-view-controls", [
+      tool_button(
+        "wrap-text",
+        "Fit page width",
+        emit(FitWidth),
+        disabled=model.loading,
+      ),
+      tool_button(
+        "rotate-cw",
+        "Rotate clockwise",
+        emit(RotatePdf),
+        disabled=model.loading,
+      ),
+    ]),
+    div(class="pdf-find-controls", hidden=model.query == "", [
+      span(
+        class="search-count",
+        "\{model.search_current} / \{model.search_total}",
+      ),
+      tool_button(
+        "chevron-left",
+        "Previous match",
+        emit(FindPdf(true)),
+        disabled=model.search_total == 0,
+      ),
+      tool_button(
+        "chevron-right",
+        "Next match",
+        emit(FindPdf(false)),
+        disabled=model.search_total == 0,
+      ),
+    ]),
   ])
 }
 
@@ -326,52 +492,95 @@ fn system_font_button_class(model : Model) -> String {
 }
 
 ///|
+fn password_dialog(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
+  div(class="modal-backdrop", hidden=!model.password_required, [
+    @html.form(
+      class="password-dialog",
+      attrs=@html.Attrs::build()
+        .role("dialog")
+        .aria_modal("true")
+        .aria_label("Unlock PDF")
+        .on_submit(event => {
+          event.prevent_default()
+          emit(SubmitPassword)
+        }),
+      [
+        icon("key-round"),
+        h2("Unlock PDF"),
+        input(
+          input_type=Password,
+          id="pdf-password",
+          placeholder="Password",
+          value=model.password,
+          on_input=emit.map(value => PasswordChanged(value)),
+          attrs=@html.Attrs::build().aria_label("PDF password"),
+        ),
+        div(
+          class="password-error",
+          hidden=!model.password_incorrect,
+          "Incorrect password.",
+        ),
+        div(class="dialog-actions", [
+          button(
+            class="button",
+            on_click=emit(CancelPassword),
+            attrs=@html.Attrs::build().type_("button"),
+            "Cancel",
+          ),
+          button(
+            class="button primary",
+            disabled=model.password == "",
+            attrs=@html.Attrs::build().type_("submit"),
+            "Unlock",
+          ),
+        ]),
+      ],
+    ),
+  ])
+}
+
+///|
 fn view(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
   let file_label = if model.file_name == "" {
     "No file loaded"
   } else {
     model.file_name
   }
-  let loading_label = if model.loading { "Loading..." } else { "Open file" }
   div(class="viewer-shell", [
     div(class="topbar", [
       div(class="brand", [
         span(class="brand-mark", "OV"),
         div(class="brand-copy", [
           span(class="brand-title", "Office Viewer"),
-          span(class="brand-subtitle", "read-only high fidelity preview"),
+          span(class="brand-subtitle", "DOCX / XLSX / PDF"),
         ]),
       ]),
       div(class="file-actions", [
         input(
           input_type=File,
           id="file-input",
-          accept=".docx,.xlsx",
+          accept=".docx,.xlsx,.pdf",
           hidden=true,
           on_change=emit.map(_ => FileSelected),
         ),
-        button(
-          class="button primary",
-          on_click=emit(OpenRequested),
-          disabled=model.loading,
-          loading_label,
-        ),
+        button(class="button primary", on_click=emit(OpenRequested), [
+          icon("file-up"),
+          span(if model.loading { "Loading..." } else { "Open file" }),
+        ]),
         input(
           input_type=Search,
           class="search-box",
           placeholder="Find in document",
           value=model.query,
           on_input=emit.map(value => SearchChanged(value)),
+          attrs=@html.Attrs::build().aria_label("Find in document"),
         ),
       ]),
       div(class="view-actions", [
         button(
           class=system_font_button_class(model),
-          title=if model.prefer_system_fonts {
-            "Use bundled fonts"
-          } else {
-            "Prefer installed fonts"
-          },
+          hidden=model.kind == Some(Pdf),
+          title="Prefer installed fonts",
           attrs=@html.Attrs::build().aria_pressed(
             if model.prefer_system_fonts {
               "true"
@@ -383,39 +592,39 @@ fn view(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
           "Aa",
         ),
         div(class="zoom-control", [
-          button(
-            class="button icon",
-            title="Zoom out",
-            on_click=emit(ZoomChanged((model.zoom - 10).to_string())),
-            "−",
+          tool_button(
+            "zoom-out",
+            "Zoom out",
+            emit(ZoomChanged((model.zoom - 10).to_string())),
+            disabled=model.zoom <= 25,
           ),
           input(
             input_type=Range,
-            min=50,
-            max=200,
-            step=10,
+            id="zoom-input",
+            min=25,
+            max=300,
+            step=5,
             value=model.zoom.to_string(),
             on_input=emit.map(value => ZoomChanged(value)),
+            attrs=@html.Attrs::build().aria_label("Zoom"),
           ),
           span(class="zoom-value", "\{model.zoom}%"),
-          button(
-            class="button icon",
-            title="Zoom in",
-            on_click=emit(ZoomChanged((model.zoom + 10).to_string())),
-            "+",
+          tool_button(
+            "zoom-in",
+            "Zoom in",
+            emit(ZoomChanged((model.zoom + 10).to_string())),
+            disabled=model.zoom >= 300,
           ),
         ]),
         button(
-          class="button",
+          class="button icon",
+          title="Selection",
           attrs=@html.Attrs::build()
+            .aria_label("Selection")
             .aria_controls("selection-panel")
             .aria_expanded(if model.inspector_open { "true" } else { "false" }),
           on_click=emit(ToggleInspector),
-          if model.inspector_open {
-            "Hide selection"
-          } else {
-            "Selection"
-          },
+          [icon("panel-right")],
         ),
         button(
           class=if model.comments_open {
@@ -423,6 +632,7 @@ fn view(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
           } else {
             "button comments-toggle"
           },
+          hidden=model.kind == Some(Pdf),
           attrs=@html.Attrs::build()
             .aria_controls("comments-panel")
             .aria_expanded(if model.comments_open { "true" } else { "false" }),
@@ -431,11 +641,13 @@ fn view(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
         ),
       ]),
     ]),
-    div(class="statusbar", [
+    pdf_toolbar(model, emit),
+    div(class="statusbar", attrs=@html.Attrs::build().aria_live("polite"), [
       span(class="status-file", "\{kind_label(model.kind)} · \{file_label}"),
       span(class="status-selection", model.status),
       span(
         class="status-comments",
+        hidden=model.kind == Some(Pdf),
         "\{annotation_count(model)} comments / notes",
       ),
       span(
@@ -447,5 +659,6 @@ fn view(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
       inspector(model, emit),
       comments_panel(model, emit),
     ]),
+    password_dialog(model, emit),
   ])
 }

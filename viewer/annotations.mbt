@@ -385,7 +385,7 @@ pub fn read_annotations(
             bytes,
           ),
         )
-      None => Err("Only .docx and .xlsx files are supported.")
+      Some(Pdf) | None => Err("Only .docx and .xlsx annotations are supported.")
     }
   } catch {
     error => Err(error.to_string())

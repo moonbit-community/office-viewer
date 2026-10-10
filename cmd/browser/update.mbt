@@ -18,6 +18,7 @@ fn surface_config(model : Model) -> @viewer.SurfaceConfig {
       match kind {
         Word => @viewer.Word
         Excel => @viewer.Excel
+        Pdf => @viewer.Pdf
       }
     }),
     document_file: model.document_file,
@@ -25,6 +26,163 @@ fn surface_config(model : Model) -> @viewer.SurfaceConfig {
     zoom: model.zoom,
     query: model.query,
     prefer_system_fonts: model.prefer_system_fonts,
+  }
+}
+
+///|
+fn selection_output(model : Model) -> String {
+  if model.selection == "" {
+    return ""
+  }
+  match
+    @viewer.materialize_selection(model.selection, {
+      mode: model.selection_mode,
+      max_preview_utf16: @viewer.default_selection_preview_utf16,
+      max_source_anchors: @viewer.default_selection_source_anchors,
+    }) {
+    Ok(value) => value
+    Err(error) => error
+  }
+}
+
+///|
+fn file_ready(
+  model : Model,
+  generation : Int,
+  payload : FilePayload?,
+  emit : @rabbita.Emit[Msg],
+) -> (Model, @rabbita.Cmd) {
+  if generation != model.generation {
+    return (model, @rabbita.none)
+  }
+  let payload = match payload {
+    Some(value) => value
+    None =>
+      return (
+        { ..model, loading: false, status: "File could not be read.", },
+        @rabbita.none,
+      )
+  }
+  match parse_document(payload) {
+    Err(error) => ({ ..model, loading: false, status: error, }, @rabbita.none)
+    Ok(document) => {
+      let pdf = document.kind == Pdf
+      let next = {
+        ..model,
+        kind: Some(document.kind),
+        file_name: document.name,
+        document_file: document.file,
+        surface_html: document.surface_html,
+        item_count: document.item_count,
+        warning: document.warning,
+        annotations: document.annotations,
+        comments_open: if pdf {
+          false
+        } else {
+          model.comments_open
+        },
+        status: if pdf {
+          "Loading PDF..."
+        } else {
+          "Ready."
+        },
+        loading: pdf,
+      }
+      let command = if pdf {
+        @viewer.load_pdf_command(
+          surface_config(next),
+          payload.bytes,
+          selection => emit(PdfSelectionChanged(generation, selection)),
+          state => emit(PdfStateChanged(generation, state)),
+        )
+      } else {
+        @rabbita.batch([surface_command(next, emit), visual_command(next)])
+      }
+      (next, command)
+    }
+  }
+}
+
+///|
+fn pdf_state(model : Model, json : String) -> Model {
+  let event = @json.parse(json) catch { _ => return model }
+  match event {
+    { "status": String("ready"), "pages": Number(pages, ..), .. } =>
+      {
+        ..model,
+        item_count: pages.to_int(),
+        loading: false,
+        password_required: false,
+        password: "",
+        status: "Ready.",
+      }
+    { "status": String("page"), "page": Number(page, ..), .. } =>
+      { ..model, page: page.to_int(), }
+    { "status": String("scale"), "zoom": Number(zoom, ..), .. } =>
+      { ..model, zoom: zoom.to_int(), }
+    { "status": String("rotation"), "rotation": Number(rotation, ..), .. } =>
+      { ..model, rotation: rotation.to_int(), }
+    {
+      "status": String("search"),
+      "current": Number(current, ..),
+      "total": Number(total, ..),
+      ..
+    } =>
+      {
+        ..model,
+        search_current: current.to_int(),
+        search_total: total.to_int(),
+      }
+    { "status": String("password"), "incorrect": incorrect, .. } =>
+      {
+        ..model,
+        password_required: true,
+        password: "",
+        password_incorrect: incorrect == Json::boolean(true),
+        status: "Password required.",
+      }
+    { "status": String("error"), "message": String(message), .. } =>
+      {
+        ..model,
+        loading: false,
+        password_required: false,
+        password: "",
+        status: message,
+      }
+    { "status": String("selection-error"), "message": String(message), .. } =>
+      { ..model, status: message, }
+    _ => model
+  }
+}
+
+///|
+fn begin_read(model : Model) -> Model {
+  {
+    ..initial_model(),
+    zoom: model.zoom,
+    inspector_open: model.inspector_open,
+    comments_open: model.comments_open,
+    annotations_copy_request: model.annotations_copy_request + 1,
+    selection_mode: model.selection_mode,
+    prefer_system_fonts: model.prefer_system_fonts,
+    generation: model.generation + 1,
+    loading: true,
+    status: "Reading file...",
+  }
+}
+
+///|
+fn capture_selection(model : Model, selection : String) -> Model {
+  {
+    ..model,
+    selection,
+    resolved_selection: "",
+    resolving: false,
+    status: if is_annotation_selection(selection) {
+      "Annotation text selected. It is ready to send to an Agent."
+    } else {
+      "Selection captured."
+    },
   }
 }
 
@@ -43,133 +201,138 @@ fn update(
           kind=@cmd.after_render,
         ),
       )
-    FileSelected =>
+    FileSelected => {
+      let next = begin_read(model)
       (
-        { ..model, loading: true, status: "Reading file...", },
-        @rabbita.perform(payload => emit(FileReady(payload)), async fn() noraise {
-          read_selected_file("file-input")
-        }),
+        next,
+        @rabbita.batch([
+          @viewer.dispose_interactions_command("document-surface"),
+          @rabbita.perform(
+            payload => emit(FileReady(next.generation, payload)),
+            async fn() noraise { read_selected_file("file-input") },
+          ),
+        ]),
       )
-    FileReady(payload) =>
-      match payload {
-        None =>
-          (
-            { ..model, loading: false, status: "Choose a Word or Excel file.", },
-            @rabbita.none,
-          )
-        Some(payload) =>
-          match parse_document(payload) {
-            Ok(document) => {
-              let next = {
-                ..model,
-                kind: Some(document.kind),
-                file_name: document.name,
-                document_file: document.file,
-                surface_html: document.surface_html,
-                item_count: document.item_count,
-                warning: document.warning,
-                annotations: document.annotations,
-                copying_annotations: false,
-                annotations_copy_request: model.annotations_copy_request + 1,
-                annotations_copy_status: "",
-                status: "Ready. Drag across text or cells to create an Agent selection.",
-                selection: "",
-                loading: false,
-              }
-              (
-                next,
-                @rabbita.batch([
-                  surface_command(next, emit),
-                  visual_command(next),
-                ]),
-              )
-            }
-            Err(error) =>
-              ({ ..model, loading: false, status: error, }, @rabbita.none)
-          }
-      }
-    DropRequested(event) =>
+    }
+    FileReady(generation, payload) | DropReady(generation, payload) =>
+      file_ready(model, generation, payload, emit)
+    DropRequested(event) => {
+      let next = begin_read(model)
       (
-        { ..model, loading: true, status: "Reading dropped file...", },
-        @rabbita.perform(payload => emit(DropReady(payload)), async fn() noraise {
-          read_dropped_file(event)
-        }),
+        next,
+        @rabbita.batch([
+          @viewer.dispose_interactions_command("document-surface"),
+          @rabbita.perform(
+            payload => emit(DropReady(next.generation, payload)),
+            async fn() noraise { read_dropped_file(event) },
+          ),
+        ]),
       )
-    DropReady(payload) =>
-      match payload {
-        None =>
-          (
-            {
-              ..model,
-              status: "The dropped item is not a supported office file.",
-            },
-            @rabbita.none,
-          )
-        Some(payload) =>
-          match parse_document(payload) {
-            Ok(document) => {
-              let next = {
-                ..model,
-                kind: Some(document.kind),
-                file_name: document.name,
-                document_file: document.file,
-                surface_html: document.surface_html,
-                item_count: document.item_count,
-                warning: document.warning,
-                annotations: document.annotations,
-                copying_annotations: false,
-                annotations_copy_request: model.annotations_copy_request + 1,
-                annotations_copy_status: "",
-                status: "Ready. Drag across text or cells to create an Agent selection.",
-                selection: "",
-                loading: false,
-              }
-              (
-                next,
-                @rabbita.batch([
-                  surface_command(next, emit),
-                  visual_command(next),
-                ]),
-              )
-            }
-            Err(error) =>
-              ({ ..model, loading: false, status: error, }, @rabbita.none)
-          }
-      }
+    }
     ZoomChanged(raw) => {
       let zoom = @string.parse_int(raw) catch { _ => model.zoom }
-      let bounded = if zoom < 50 { 50 } else if zoom > 200 { 200 } else { zoom }
-      let next = { ..model, zoom: bounded, }
+      let next = { ..model, zoom: zoom.clamp(min=25, max=300), }
       (next, visual_command(next))
     }
     SearchChanged(query) => {
-      let next = { ..model, query, }
+      let next = { ..model, query, search_current: 0, search_total: 0, }
       (next, visual_command(next))
     }
     SelectionChanged(selection) =>
+      (capture_selection(model, selection), @rabbita.none)
+    PdfSelectionChanged(generation, selection) =>
+      if generation == model.generation && model.kind == Some(Pdf) {
+        (capture_selection(model, selection), @rabbita.none)
+      } else {
+        (model, @rabbita.none)
+      }
+    PdfStateChanged(generation, state) =>
+      if generation == model.generation && model.kind == Some(Pdf) {
+        (pdf_state(model, state), @rabbita.none)
+      } else {
+        (model, @rabbita.none)
+      }
+    SelectionModeChanged(mode) =>
+      ({ ..model, selection_mode: mode, }, @rabbita.none)
+    ResolveSelection => {
+      if model.kind != Some(Pdf) || model.selection == "" {
+        return (model, @rabbita.none)
+      }
+      let reference = selection_output(model)
       (
         {
           ..model,
-          selection,
-          status: if is_annotation_selection(selection) {
-            "Annotation text selected. It is ready to send to an Agent."
-          } else {
-            "Selection captured. It is ready to send to an Agent."
-          },
+          resolving: true,
+          resolved_selection: "",
+          status: "Resolving PDF selection...",
         },
-        @rabbita.none,
+        @rabbita.perform(
+          result => {
+            emit(SelectionResolved(model.generation, model.selection, result))
+          },
+          async fn() noraise {
+            @viewer.resolve_pdf_selection("document-surface", reference)
+          },
+        ),
+      )
+    }
+    SelectionResolved(generation, selection, result) => {
+      if generation != model.generation || selection != model.selection {
+        return (model, @rabbita.none)
+      }
+      match result {
+        Ok(value) =>
+          (
+            {
+              ..model,
+              resolving: false,
+              resolved_selection: value,
+              status: "Selection resolved from PDF text items.",
+            },
+            @rabbita.none,
+          )
+        Err(error) =>
+          ({ ..model, resolving: false, status: error, }, @rabbita.none)
+      }
+    }
+    PageChanged(raw) => {
+      let page = @string.parse_int(raw) catch { _ => model.page }
+      (model, @viewer.pdf_page_command("document-surface", page))
+    }
+    RotatePdf =>
+      (
+        model,
+        @viewer.pdf_rotation_command(
+          "document-surface",
+          (model.rotation + 90) % 360,
+        ),
+      )
+    FitWidth => (model, @viewer.pdf_fit_width_command("document-surface"))
+    FindPdf(previous) =>
+      (model, @viewer.pdf_find_command("document-surface", previous))
+    PasswordChanged(password) => ({ ..model, password, }, @rabbita.none)
+    SubmitPassword =>
+      (
+        {
+          ..model,
+          password: "",
+          password_required: false,
+          status: "Unlocking PDF...",
+        },
+        @viewer.pdf_password_command("document-surface", model.password),
+      )
+    CancelPassword =>
+      (
+        {
+          ..initial_model(),
+          generation: model.generation + 1,
+          annotations_copy_request: model.annotations_copy_request + 1,
+          status: "PDF loading cancelled.",
+        },
+        @viewer.dispose_interactions_command("document-surface"),
       )
     ToggleSystemFonts => {
-      let enabled = !model.prefer_system_fonts
-      let next = {
-        ..model,
-        prefer_system_fonts: enabled,
-        status: if enabled {
-          "Installed font preview enabled. Page layout stays fixed."
-        } else {
-          "Bundled font preview enabled."
-        },
-      }
+      let next = { ..model, prefer_system_fonts: !model.prefer_system_fonts, }
       (next, visual_command(next))
     }
     ToggleInspector =>
@@ -264,13 +427,19 @@ fn update(
       )
     }
     CopySelection => {
-      copy_to_clipboard(model.selection)
-      (
-        { ..model, status: "Selection copied to the clipboard.", },
-        @rabbita.none,
-      )
+      copy_to_clipboard(selection_output(model))
+      ({ ..model, status: "Selection copied.", }, @rabbita.none)
     }
     ClearSelection =>
-      ({ ..model, selection: "", status: "Selection cleared.", }, @rabbita.none)
+      (
+        {
+          ..model,
+          selection: "",
+          resolved_selection: "",
+          resolving: false,
+          status: "Selection cleared.",
+        },
+        @viewer.clear_selection_command("document-surface"),
+      )
   }
 }

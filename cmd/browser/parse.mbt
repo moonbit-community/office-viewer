@@ -5,6 +5,8 @@ fn document_kind(name : String) -> DocumentKind? {
     Some(Word)
   } else if lower.has_suffix(".xlsx") {
     Some(Excel)
+  } else if lower.has_suffix(".pdf") {
+    Some(Pdf)
   } else {
     None
   }
@@ -22,7 +24,18 @@ fn mock_document_file(name : String) -> String {
 fn parse_document(payload : FilePayload) -> Result[LoadedDocument, String] {
   let kind = match document_kind(payload.name) {
     Some(kind) => kind
-    None => return Err("Only .docx and .xlsx files are supported.")
+    None => return Err("Only .docx, .xlsx, and .pdf files are supported.")
+  }
+  if kind == Pdf {
+    return Ok({
+      kind,
+      name: payload.name,
+      file: mock_document_file(payload.name),
+      surface_html: @viewer.pdf_surface_html(),
+      item_count: 0,
+      warning: "",
+      annotations: Json::null(),
+    })
   }
   let rendered = @viewer.render_document(
     payload.name,

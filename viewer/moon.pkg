@@ -2,6 +2,7 @@ import {
   "moonbit-community/rabbita",
   "moonbit-community/rabbita/cmd",
   "moonbit-community/rabbita/html",
+  "moonbit-community/rabbita/js",
   "moonbitlang/core/json",
   "moonbitlang/core/string",
   "moonbitlang/x/crypto",
@@ -20,6 +21,10 @@ import {
 import {
   "moonbitlang/mbtexcel/demos",
 } for "wbtest"
+
+import {
+  "moonbitlang/core/json",
+} for "test"
 
 warnings = "-alert_experimental-alert_xss_vulnerable"
 

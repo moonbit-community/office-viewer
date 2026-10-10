@@ -3,3 +3,6 @@ _build/
 .lody/
 *.log
 /dist/
+
+node_modules/
+public/vendor/

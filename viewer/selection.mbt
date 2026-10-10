@@ -2,7 +2,8 @@
 // The materialization layer keeps the browser selection envelope stable while
 // giving a host an explicit choice about how much selected text enters an
 // Agent context. The source references are derived from the existing
-// office.selection.v1 fields and do not introduce a second selector syntax.
+// office.selection.v1 fields. PDF.js references are explicitly separate from
+// office.mbt selectors and retain an untruncated text-range reference.
 
 ///|
 pub(all) enum SelectionMaterializationMode {
@@ -55,6 +56,7 @@ priv struct CanonicalSelection {
   cells : Array[SelectionCell]
   sheet : String?
   range : String?
+  pdf_reference : Json?
 }
 
 ///|
@@ -181,6 +183,16 @@ fn compact_anchor(value : Json) -> (Json, String?) {
       if !runs.is_empty() {
         compact_fields.push(("runs", json_string_array(runs)))
       }
+      for
+        key in [
+          "item_index", "page_ref", "font_name", "dir", "has_eol", "geometry", "marked_content_id",
+          "semantics",
+        ] {
+        match fields.get(key) {
+          Some(value) => compact_fields.push((key, value))
+          None => ()
+        }
+      }
       (Json::object(Map(compact_fields)), selector)
     }
     _ => (Json::object(Map([])), None)
@@ -247,6 +259,92 @@ fn parse_pages(value : Json?) -> Array[Int] {
 }
 
 ///|
+fn pdf_reference(fields : Map[String, Json], file : String) -> Json? {
+  guard json_string(fields.get("format")) == Some("pdf") &&
+    json_string(fields.get("kind")) == Some("pdf") else {
+    return None
+  }
+  guard fields.get("reference") is Some(reference) else { return None }
+  guard reference
+    is {
+      "schema": String("office.pdf.text-range.v1"),
+      "file": String(reference_file),
+      "document": identity,
+      "join": String("pdfjs-items-eol-v1"),
+      "text_content": {
+        "include_marked_content": True,
+        "disable_normalization": True,
+        ..
+      },
+      "start": {
+        "page": Number(start_page, ..),
+        "item_index": Number(start_item, ..),
+        "offset_utf16": Number(start_offset, ..),
+        ..
+      },
+      "end": {
+        "page": Number(end_page, ..),
+        "item_index": Number(end_item, ..),
+        "offset_utf16": Number(end_offset, ..),
+        ..
+      },
+      ..
+    } else {
+    return None
+  }
+  guard reference_file == file && fields.get("document") == Some(identity) else {
+    return None
+  }
+  guard identity
+    is {
+      "sha256": String(hash),
+      "byte_length": Number(byte_length, ..),
+      "page_count": Number(page_count, ..),
+      "parser": { "name": String("pdfjs"), "version": String(version), .. },
+      ..
+    } else {
+    return None
+  }
+  guard hash.length() == 64 && version != "" else { return None }
+  for unit in hash.code_units() {
+    guard (unit >= 48 && unit <= 57) || (unit >= 97 && unit <= 102) else {
+      return None
+    }
+  }
+  for
+    number in [
+      start_page, end_page, start_item, end_item, start_offset, end_offset, page_count,
+      byte_length,
+    ] {
+    guard number >= 0 && number == number.to_int().to_double() else {
+      return None
+    }
+  }
+  guard byte_length > 0 else { return None }
+  guard fields.get("text") is Some(String(text)) && text.length() > 0 else {
+    return None
+  }
+  if reference is Object(reference_fields) {
+    match reference_fields.get("text_utf16_length") {
+      None => ()
+      Some(Number(length, ..)) if length == text.length().to_double() => ()
+      _ => return None
+    }
+  }
+  guard start_page >= 1 && end_page <= page_count else { return None }
+  guard start_page < end_page ||
+    (start_page == end_page && start_item < end_item) ||
+    (
+      start_page == end_page &&
+      start_item == end_item &&
+      start_offset < end_offset
+    ) else {
+    return None
+  }
+  Some(reference)
+}
+
+///|
 fn parse_selection(
   selection_json : String,
 ) -> Result[CanonicalSelection, String] {
@@ -288,7 +386,11 @@ fn parse_selection(
   let anchors = json_array(fields.get("anchors"))
   let source_anchors : Array[Json] = []
   let selectors : Array[String] = []
-  let selector = json_string(fields.get("selector"))
+  let selector = if format == "pdf" {
+    None
+  } else {
+    json_string(fields.get("selector"))
+  }
   match selector {
     Some(value) => {
       push_unique(selectors, value)
@@ -306,9 +408,13 @@ fn parse_selection(
   }
   for anchor in anchors {
     let (compact, anchor_selector) = compact_anchor(anchor)
+    if format == "pdf" && compact is Object(anchor_fields) {
+      anchor_fields.remove("selector")
+    }
     source_anchors.push(compact)
     match anchor_selector {
-      Some(value) => push_unique(selectors, value)
+      Some(value) if format != "pdf" => push_unique(selectors, value)
+      Some(_) => ()
       None => ()
     }
   }
@@ -325,6 +431,7 @@ fn parse_selection(
     cells,
     sheet: json_string(fields.get("sheet")),
     range: json_string(fields.get("range")),
+    pdf_reference: pdf_reference(fields, file),
   })
 }
 
@@ -425,6 +532,9 @@ fn projected_selection(
         ),
       )
     }
+    for name in ["document", "reference", "page_info"] {
+      copy_optional_field(selection.fields, fields, name)
+    }
     Json::object(fields)
   }
 }
@@ -432,8 +542,12 @@ fn projected_selection(
 ///|
 fn source_readable(selection : CanonicalSelection) -> Bool {
   selection.kind != "annotation" &&
-  !selection.selectors.is_empty() &&
-  selection.file != ""
+  selection.file != "" &&
+  (if selection.format == "pdf" {
+    selection.pdf_reference is Some(_)
+  } else {
+    !selection.selectors.is_empty()
+  })
 }
 
 ///|
@@ -446,6 +560,10 @@ fn source_reason(selection : CanonicalSelection) -> String? {
     None
   } else if selection.file == "" {
     Some("selection.file is empty")
+  } else if selection.format == "pdf" {
+    Some(
+      "no complete PDF text-range reference with matching file, document identity, and parser was present",
+    )
   } else {
     Some(
       "no reader-friendly selector was present; physical-only anchors cannot be read back",
@@ -500,7 +618,7 @@ fn materialized_json(
     ("kind", Json::string(selection.kind)),
     (
       "selector_schema",
-      if selection.kind == "annotation" {
+      if selection.format == "pdf" || selection.kind == "annotation" {
         Json::null()
       } else {
         Json::string("office.selector/1")
@@ -538,6 +656,34 @@ fn materialized_json(
         selection.fields.get("annotation_range").unwrap_or(Json::null()),
       ),
     )
+  }
+  if selection.format == "pdf" {
+    source_fields.push(
+      ("reference_schema", Json::string("office.pdf.text-range.v1")),
+    )
+    source_fields.push(
+      ("reference_complete", Json::boolean(selection.pdf_reference is Some(_))),
+    )
+    match selection.pdf_reference {
+      Some(reference) => {
+        source_fields.push(("reference", reference))
+        source_fields.push(
+          (
+            "resolver",
+            Json::object({
+              "name": Json::string("pdfjs"),
+              "api": Json::string("resolve_pdf_selection"),
+              "scope": Json::string("active-document-or-reopen-identical-bytes"),
+            }),
+          ),
+        )
+      }
+      None => ()
+    }
+    match selection.fields.get("document") {
+      Some(document) => source_fields.push(("document", document))
+      None => ()
+    }
   }
   match source_reason(selection) {
     Some(reason) => source_fields.push(("reason", Json::string(reason)))
@@ -634,7 +780,7 @@ pub fn materialize_selection_preview(
 }
 
 ///|
-/// Return only the source references needed for a later office.mbt read.
+/// Return source references for an office.mbt read or PDF.js resolution.
 pub fn materialize_selection_deferred(
   selection_json : String,
 ) -> Result[String, String] {

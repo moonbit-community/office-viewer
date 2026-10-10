@@ -5,6 +5,7 @@ import {
   "moonbit-community/rabbita/js",
   "moonbit-community/rabbita/cmd",
   "moonbitlang/core/string",
+  "moonbitlang/core/json",
   "moonbit-community/office-viewer/viewer",
 }
 

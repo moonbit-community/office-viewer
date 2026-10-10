@@ -1,0 +1,84 @@
+///|
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/core/env",
+  "moonbitlang/core/encoding/base64",
+  "moonbitlang/core/encoding/utf8",
+}
+
+///|
+async fn copy_tree(source : String, target : String) -> Unit {
+  match @fs.kind(source) {
+    Directory => {
+      if !@fs.exists(target) {
+        @fs.mkdir(target, recursive=true, permission=0o755)
+      }
+      for name in @fs.readdir(source, sort=true) {
+        copy_tree(source + "/" + name, target + "/" + name)
+      }
+    }
+    _ => {
+      let reader = @fs.open(source, mode=ReadOnly)
+      defer reader.close()
+      let writer = @fs.open(
+        target,
+        mode=WriteOnly,
+        create_mode=CreateOrTruncate,
+        permission=0o644,
+      )
+      defer writer.close()
+      writer.write_reader(reader)
+    }
+  }
+}
+
+///|
+async fn main {
+  let args = @env.args()
+  let target = args.get(1).unwrap_or("public/vendor")
+  let pdfjs = "node_modules/pdfjs-dist"
+  guard @fs.exists(pdfjs) else {
+    fail("Run npm ci before preparing browser assets.")
+  }
+  if !@fs.exists(target + "/pdfjs/build") {
+    @fs.mkdir(target + "/pdfjs/build", recursive=true, permission=0o755)
+  }
+  // Serve unchanged ESM bytes with .js filenames for Warren's MIME mapping.
+  for name in ["pdf", "pdf.worker"] {
+    copy_tree(
+      pdfjs + "/build/" + name + ".mjs",
+      target + "/pdfjs/build/" + name + ".js",
+    )
+  }
+  for name in ["web", "cmaps", "standard_fonts", "wasm", "iccs", "LICENSE"] {
+    copy_tree(pdfjs + "/" + name, target + "/pdfjs/" + name)
+  }
+  copy_tree(pdfjs + "/web/pdf_viewer.mjs", target + "/pdfjs/web/pdf_viewer.js")
+  if !@fs.exists(target + "/icons") {
+    @fs.mkdir(target + "/icons", recursive=true, permission=0o755)
+  }
+  let icons_css = StringBuilder()
+  for
+    name in [
+      "file-up", "chevron-left", "chevron-right", "rotate-cw", "copy", "trash-2",
+      "zoom-in", "zoom-out", "panel-right", "scan-text", "wrap-text", "key-round",
+    ] {
+    let bytes = @fs.read_file(
+      "node_modules/lucide-static/icons/" + name + ".svg",
+    )
+    icons_css.write_string(
+      ".office-icon-" +
+      name +
+      " { mask: url(\"data:image/svg+xml;base64," +
+      @base64.encode(bytes.binary()) +
+      "\") center / contain no-repeat; }\n",
+    )
+  }
+  @fs.write_file(
+    target + "/icons/icons.css",
+    @utf8.encode(icons_css.to_string()),
+  )
+  copy_tree("node_modules/lucide-static/LICENSE", target + "/icons/LICENSE")
+  println("Prepared PDF.js and Lucide assets in " + target)
+}

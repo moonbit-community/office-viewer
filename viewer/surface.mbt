@@ -37,6 +37,7 @@ pub fn render_surface(config : SurfaceConfig) -> @html.Html {
     let class_name = match config.kind {
       Some(Word) => "surface office-viewer-surface word-surface word-mode"
       Some(Excel) => "surface office-viewer-surface sheet-surface sheet-mode"
+      Some(Pdf) => "surface office-viewer-surface pdf-surface pdf-mode"
       None => "surface office-viewer-surface"
     }
     @html.div(
@@ -58,6 +59,9 @@ pub fn interactions_command(
 ) -> @rabbita.Cmd {
   @cmd.custom_cmd(
     scheduler => {
+      if config.kind == Some(Pdf) {
+        return
+      }
       install_surface_interactions(
         config.surface_id,
         surface_kind(config.kind),
@@ -96,10 +100,14 @@ pub fn dispose_interactions_command(surface_id : String) -> @rabbita.Cmd {
 pub fn visual_command(config : SurfaceConfig) -> @rabbita.Cmd {
   @cmd.custom_cmd(
     _ => {
-      set_surface_zoom(config.surface_id, config.zoom.to_double() / 100.0)
-      prepare_font_runtime(config.surface_id)
-      set_system_font_mode(config.surface_id, config.prefer_system_fonts)
-      apply_search(config.surface_id, config.query)
+      if config.kind == Some(Pdf) {
+        apply_pdf_visual(config.surface_id, config.zoom, config.query)
+      } else {
+        set_surface_zoom(config.surface_id, config.zoom.to_double() / 100.0)
+        prepare_font_runtime(config.surface_id)
+        set_system_font_mode(config.surface_id, config.prefer_system_fonts)
+        apply_search(config.surface_id, config.query)
+      }
     },
     kind=@cmd.after_render,
   )
@@ -110,6 +118,7 @@ fn surface_kind(kind : DocumentKind?) -> String {
   match kind {
     Some(Word) => "word"
     Some(Excel) => "excel"
+    Some(Pdf) => "pdf"
     None => ""
   }
 }
@@ -156,6 +165,15 @@ pub fn select_annotation_command(
         None => ()
       }
     },
+    kind=@cmd.after_render,
+  )
+}
+
+///|
+/// Clear the visible native text or cell selection without unloading a file.
+pub fn clear_selection_command(surface_id : String) -> @rabbita.Cmd {
+  @cmd.custom_cmd(
+    _ => clear_surface_selection(surface_id),
     kind=@cmd.after_render,
   )
 }

@@ -1,7 +1,7 @@
 # Office Selection Model
 
-This document defines the boundary between the read-only Office renderer and
-the later OpenSeek Agent integration.
+This document defines the selections emitted by the read-only document surface
+and consumed by host applications and agents.
 
 ## Goals
 
@@ -164,27 +164,83 @@ the same source-byte hash, find the item ID, and apply the recorded body span.
 Never substitute the surrounding paragraph/cell text. Consumers must handle the
 new kind explicitly instead of assuming every selection is document content.
 
+## PDF selections
+
+PDF uses native text selection over PDF.js's text layer. The envelope has
+`format: "pdf"`, `kind: "pdf"`, `file`, `text`, `browser_text`, `document`,
+`reference`, `anchors`, `pages`, and `page_info`. Its authoritative reference
+is independent of `office.selector/1`:
+
+```json
+{
+  "schema": "office.pdf.text-range.v1",
+  "file": "/mock/office/sample.pdf",
+  "document": {
+    "sha256": "26d937576b2e771cbd616d8dac91a92c5d500b17cdedabdf17412dbc01b121f2",
+    "byte_length": 9639,
+    "page_count": 4,
+    "parser": { "name": "pdfjs", "version": "6.4.299" }
+  },
+  "text_content": {
+    "include_marked_content": true,
+    "disable_normalization": true
+  },
+  "join": "pdfjs-items-eol-v1",
+  "start": { "page": 1, "item_index": 1, "offset_utf16": 0 },
+  "end": { "page": 1, "item_index": 1, "offset_utf16": 13 },
+  "text_utf16_length": 13
+}
+```
+
+Pages are one-based. Item indices are zero-based indices into the original
+`getTextContent().items` array, including marked-content entries. Offsets are
+UTF-16 positions within a text item's original string; the end is exclusive.
+Indices are relative to identical bytes, the parser version, and the recorded
+extraction options. They are not byte offsets or persistent PDF object ids.
+`document` is also present at the top level of the raw selection and may
+include PDF.js fingerprints; SHA-256 is the content identity.
+
+`pdfjs-items-eol-v1` preserves item strings, inserts a newline after `hasEOL`
+items except the final item, and joins pages with two newlines. `browser_text`
+retains the browser's native selected string separately. The runtime verifies
+the rendered and extracted item sequences before mapping them, and does not
+invent a logical address when they disagree.
+
+Each anchor records its page, page object reference, item index, selected UTF-16
+span, font, direction, and geometry. Geometry has `space:
+"pdf-page-user-space"`, `unit: "user-unit"`, the page's `user_unit`, quads, and
+a bounding box. `selected-dom-range` precision describes a captured DOM range
+converted through the page viewport. `whole-text-item` precision describes
+metric bounds for the entire source item during resolution without a DOM range;
+it does not provide per-character geometry. `page_info` retains the CropBox,
+intrinsic page rotation, user unit, and presence of a structure tree.
+
+Available tagged structure adds `marked_content_id` and `semantics` containing
+the actual `role_path`, inherited language, and alternate text. Untagged PDFs
+have no inferred paragraph or table roles. Image-only pages have no text
+anchors, and OCR is not included.
+
 ## Layers
 
 The implementation is deliberately split into three layers:
 
-1. The document layer reads OOXML and renders through the unmodified
-   `office.mbt` layout packages.
+1. The document layer renders OOXML through unmodified `office.mbt` packages
+   and PDF through PDF.js.
 2. The browser layer adds interaction metadata that can be proved from the
-   rendered DOM: Excel cell coordinates and Word physical selection context.
+   rendered DOM and source readers: Excel cell coordinates, validated Word
+   paragraph/run joins, and PDF text-item ranges.
 3. The host receives the versioned envelope and can use canonical selectors
    only where the renderer actually has one.
 
-Word fragment spans are local to the rendered DOM text node and use UTF-16
-offsets, matching the DOM and JavaScript string model. They are not byte
-offsets into XML and are not a substitute for a canonical selector. Byte or
-OOXML path metadata can be added later by a separate source-map-capable
-renderer without changing the selection envelope.
+Word spans use paragraph-relative UTF-16 offsets when the source join succeeds
+and fragment-local offsets for physical-only anchors. Neither is a byte offset
+into XML. Hosts must inspect stability and selector availability before using
+a source address.
 
 ## Current milestone
 
-The current implementation covers native Word text selection and Excel range
-selection over the rendered worksheet window. Nested tables, drawings, and
+The current implementation covers native Word and PDF text selection and Excel
+range selection over the rendered worksheet window. Nested tables, drawings, and
 other unsupported OOXML remain governed by the layout engine's existing
 diagnostics instead of being treated as selected content.
 
@@ -208,6 +264,15 @@ the `[...]` marker is not counted as selected document text. `deferred` sets
 `selection.text` to `null` and carries compact reader references instead; the
 host can use the `file` and `selectors` to read the exact text later.
 
+For PDF, `source.selector_schema` is `null`, `source.selectors` is empty, and
+`source.reference_schema` is `office.pdf.text-range.v1`. The source includes
+`document`, the complete `reference`, `reference_complete`, and a resolver
+descriptor naming `resolve_pdf_selection`. The original range is not truncated
+when the compact anchor list exceeds its bound. `source.readable` is true only
+when a nonempty file path and structurally valid reference with matching document
+identity are present. Actual resolution additionally verifies the active bytes
+and PDF.js version and rejects invalid or out-of-bounds endpoints.
+
 Preview and deferred results intentionally omit large DOM rectangles, raw Word
 anchor text, and Excel cell payloads from the projected selection. They retain
 counts and compact source fields (`selector`, `path`, `part`, UTF-16 spans,
@@ -215,6 +280,12 @@ counts and compact source fields (`selector`, `path`, `part`, UTF-16 spans,
 return at most 64 compact source anchors and report `anchors_truncated`; callers
 that need another bound can use `materialize_selection` with
 `SelectionMaterializationOptions`.
+
+Compact PDF anchors retain item indices, page references, direction, font,
+marked-content ids, tagged semantics, and geometry. Preview/deferred omit raw
+selected anchor text and `browser_text`. `resolve_pdf_selection` accepts any
+of the three materialized forms and reconstructs full text by rereading PDF.js
+items. It returns whole-item geometry when no live DOM range is supplied.
 
 For Excel selections that do not have a top-level `text` field, the viewer
 derives exact content from the selected cells in row order, using tabs between
@@ -226,9 +297,14 @@ the authoritative read-back address.
 OpenSeek should receive the envelope together with the `file` path and a
 host-owned document identity when one is available. The standalone demo uses a
 `/mock/office/...` path; the OpenSeek host replaces it with the path it passes
-to `office`. `selector` follows `office.selector/1`; `path`, `part`, `runs`,
+to `office`. For DOCX/XLSX, `selector` follows `office.selector/1`; `path`, `part`, `runs`,
 `stability`, and the reader judgment fields are bounded source metadata for
 debugging and later Agent actions. OpenSeek can quote `text` immediately and
 use a canonical selector to request richer context through `office get`,
 `office text`, `office outline`, or `office query` later. This keeps Agent
 behavior independent from the current SVG/HTML implementation.
+
+PDF uses the same host-owned file-path field but an explicit PDF.js reference
+and resolver. It does not claim that `office.mbt` or `pdflite` can consume the
+PDF.js item indices as selectors. A host may add another parser adapter later
+without changing the meaning of these existing references.

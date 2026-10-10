@@ -1,0 +1,9 @@
+{
+  "name": "office-viewer-browser-assets",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "pdfjs-dist": "6.4.299",
+    "lucide-static": "0.577.0"
+  }
+}

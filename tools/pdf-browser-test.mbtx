@@ -1,0 +1,806 @@
+///|
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/process",
+  "moonbitlang/async/http",
+  "moonbitlang/async/websocket",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/core/encoding/base64",
+  "moonbitlang/core/encoding/utf8",
+}
+
+///|
+fn stream(contents : String) -> String {
+  "<< /Length \{contents.length()} >>\nstream\n" + contents + "\nendstream"
+}
+
+///|
+// An original fixture with tagged text, more than 64 anchors, a link, a
+// cropped/rotated page with UserUnit, and a final image-only page.
+fn fixture_pdf() -> Bytes {
+  let first = StringBuilder()
+  first.write_string(
+    "/H1 <</MCID 0>> BDC BT /F1 20 Tf 48 740 Td (Office Viewer PDF sample) Tj ET EMC\n/P <</MCID 1>> BDC\n",
+  )
+  let second = StringBuilder()
+  second.write_string("/P <</MCID 0>> BDC\n")
+  for i in 1..<=80 {
+    let output = if i <= 40 { first } else { second }
+    let y = 700 - (i - 1) % 40 * 14
+    output.write_string(
+      "BT /F1 11 Tf 48 \{y} Td (Row \{i.to_string().pad_start(2, '0')}: document text with a stable source reference.) Tj ET\n",
+    )
+  }
+  first.write_string("EMC\nq 0.12 0.5 0.42 rg 48 90 240 24 re f Q\n")
+  second.write_string("EMC\n")
+  let objects = [
+    "<< /Type /Catalog /Pages 2 0 R /MarkInfo << /Marked true >> /Lang (en-US) /StructTreeRoot 12 0 R /Outlines 18 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R] /Count 4 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 11 0 R >> >> /Contents 7 0 R /StructParents 0 /Annots [21 0 R] >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 11 0 R >> >> /Contents 8 0 R /StructParents 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /CropBox [20 10 380 280] /Rotate 90 /UserUnit 2 /Resources << /Font << /F1 11 0 R >> >> /Contents 9 0 R >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 500] /Resources << /XObject << /Im1 17 0 R >> >> /Contents 10 0 R >>",
+    stream(first.to_string()),
+    stream(second.to_string()),
+    stream("BT /F1 16 Tf 50 150 Td (Rotated crop and user unit) Tj ET\n"),
+    stream("q 240 0 0 240 80 130 cm /Im1 Do Q\n"),
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /StructTreeRoot /K [13 0 R 14 0 R 15 0 R] /ParentTree 16 0 R /ParentTreeNextKey 2 >>",
+    "<< /Type /StructElem /S /H1 /P 12 0 R /Pg 3 0 R /K 0 >>",
+    "<< /Type /StructElem /S /P /P 12 0 R /Pg 3 0 R /K 1 >>",
+    "<< /Type /StructElem /S /P /P 12 0 R /Pg 4 0 R /K 0 >>",
+    "<< /Nums [0 [13 0 R 14 0 R] 1 [15 0 R]] >>",
+    "<< /Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /ASCIIHexDecode /Length 25 >>\nstream\nFF000000AA000066FFFFFFFF>\nendstream",
+    "<< /Type /Outlines /First 19 0 R /Last 19 0 R /Count 1 >>",
+    "<< /Title (Sample document) /Parent 18 0 R /Dest [3 0 R /Fit] >>",
+    "<< /Title (Office Viewer PDF fixture) /Author (Office Viewer contributors) >>",
+    "<< /Type /Annot /Subtype /Link /Rect [48 735 300 760] /Border [0 0 0] /A << /S /URI /URI (https://example.com/) >> >>",
+  ]
+  let output = StringBuilder()
+  output.write_string("%PDF-1.7\n")
+  let offsets : Array[Int] = []
+  for i, object in objects {
+    offsets.push(output.to_string().length())
+    output.write_string("\{i + 1} 0 obj\n" + object + "\nendobj\n")
+  }
+  let xref = output.to_string().length()
+  output.write_string("xref\n0 \{objects.length() + 1}\n0000000000 65535 f \n")
+  for offset in offsets {
+    output.write_string(offset.to_string().pad_start(10, '0') + " 00000 n \n")
+  }
+  output.write_string(
+    "trailer\n<< /Size \{objects.length() + 1} /Root 1 0 R /Info 20 0 R >>\nstartxref\n\{xref}\n%%EOF\n",
+  )
+  @utf8.encode(output.to_string())
+}
+
+///|
+struct Browser {
+  socket : @websocket.Conn
+  mut id : Int
+  errors : Array[Json]
+  checks : Array[String]
+}
+
+///|
+async fn Browser::command(
+  self : Browser,
+  operation : String,
+  params? : Json = {},
+) -> Json {
+  self.id += 1
+  let id = self.id
+  self.socket.send_text(
+    ({ "id": id, "method": operation, "params": params } : Json).stringify(),
+  )
+  for ;; {
+    let message = @async.with_timeout(30000, () => {
+      self.socket.recv().read_all().text()
+    })
+    let response = @json.parse(message)
+    match response {
+      { "id": Number(value, ..), "error": error, .. } if value == id.to_double() =>
+        fail("CDP " + operation + " error: " + error.stringify())
+      { "id": Number(value, ..), "result": result, .. } if value ==
+        id.to_double() => return result
+      { "method": String("Runtime.exceptionThrown"), .. } =>
+        self.errors.push(response)
+      _ => ()
+    }
+  }
+}
+
+///|
+async fn Browser::evaluate(self : Browser, expression : String) -> Json {
+  let response = self.command("Runtime.evaluate", params={
+    "expression": expression,
+    "awaitPromise": true,
+    "returnByValue": true,
+  })
+  match response {
+    { "exceptionDetails": error, .. } =>
+      fail("Browser evaluation: " + error.stringify())
+    { "result": { "value": value, .. }, .. } => value
+    _ => fail("Missing browser value: " + response.stringify())
+  }
+}
+
+///|
+async fn Browser::wait_for(self : Browser, expression : String) -> Unit {
+  for _ in 0..<400 {
+    if self.evaluate(expression) == Json::boolean(true) {
+      return
+    }
+    @async.sleep(25)
+  }
+  let state = self.evaluate(
+    "({status:document.querySelector('.status-selection')?.textContent, page:document.querySelector('#pdf-page')?.value, current:document.querySelector('#document-surface')?.__officeViewerPdf?.viewer.currentPageNumber, rotation:document.querySelector('#document-surface')?.__officeViewerPdf?.viewer.pagesRotation, selected:getSelection().toString(), text:document.querySelector('#selection-output')?.textContent.slice(0,300), pages:document.querySelectorAll('.page').length})",
+  )
+  fail("Browser timeout: " + expression + "\n" + state.stringify())
+}
+
+///|
+async fn Browser::check(
+  self : Browser,
+  name : String,
+  expression : String,
+) -> Unit {
+  let result = self.evaluate(expression)
+  guard result == Json::boolean(true) else {
+    fail("Browser assertion failed (" + name + "): " + result.stringify())
+  }
+  self.checks.push(name)
+  println("PASS: " + name)
+}
+
+///|
+async fn Browser::upload(self : Browser, filename : String) -> Unit {
+  let found = self.command("Runtime.evaluate", params={
+    "expression": "(() => { window.uploadPreviousPdf=document.querySelector('#document-surface')?.__officeViewerPdf; const input=document.querySelector('#file-input'); input.value=''; return input; })()",
+  })
+  guard found is { "result": { "objectId": String(object), .. }, .. } else {
+    fail("Missing file input")
+  }
+  ignore(
+    self.command("DOM.setFileInputFiles", params={
+      "objectId": object,
+      "files": [filename],
+    }),
+  )
+  ignore(self.command("Runtime.releaseObject", params={ "objectId": object }))
+  self.wait_for(
+    "!!document.querySelector('#document-surface')?.__officeViewerPdf && document.querySelector('#document-surface').__officeViewerPdf !== window.uploadPreviousPdf",
+  )
+}
+
+///|
+async fn Browser::screenshot(self : Browser, path : String) -> Unit {
+  let result = self.command("Page.captureScreenshot", params={ "format": "png" })
+  guard result is { "data": String(data), .. } else {
+    fail("Missing screenshot")
+  }
+  @fs.write_file(path, @base64.decode(data))
+}
+
+///|
+async fn Browser::drag_title(self : Browser) -> Unit {
+  let points = self.evaluate(
+    (
+      #| (async () => {
+      #|   const span = [...document.querySelectorAll('[data-pdf-item]')].find(s => s.textContent === 'Office Viewer PDF sample');
+      #|   span.scrollIntoView({block:'center'});
+      #|   await document.fonts.ready;
+      #|   await new Promise(requestAnimationFrame);
+      #|   const range = document.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 13);
+      #|   const r = range.getBoundingClientRect();
+      #|   return {start:{x:r.left + 1, y:r.top + r.height*.5}, end:{x:r.right - 1, y:r.top + r.height*.5}};
+      #| })()
+    ),
+  )
+  guard points
+    is {
+      "start": { "x": Number(x0, ..), "y": Number(y0, ..), .. },
+      "end": { "x": Number(x1, ..), "y": Number(y1, ..), .. },
+      ..
+    } else {
+    fail("Missing drag points")
+  }
+  ignore(
+    self.command("Input.dispatchMouseEvent", params={
+      "type": "mouseMoved",
+      "x": x0,
+      "y": y0,
+    }),
+  )
+  ignore(
+    self.command("Input.dispatchMouseEvent", params={
+      "type": "mousePressed",
+      "x": x0,
+      "y": y0,
+      "button": "left",
+      "buttons": 1,
+      "clickCount": 1,
+    }),
+  )
+  for step in 1..<=12 {
+    let t = step.to_double() / 12.0
+    ignore(
+      self.command("Input.dispatchMouseEvent", params={
+        "type": "mouseMoved",
+        "x": x0 + (x1 - x0) * t,
+        "y": y0 + (y1 - y0) * t,
+        "button": "left",
+        "buttons": 1,
+      }),
+    )
+  }
+  ignore(
+    self.command("Input.dispatchMouseEvent", params={
+      "type": "mouseReleased",
+      "x": x1,
+      "y": y1,
+      "button": "left",
+      "buttons": 0,
+      "clickCount": 1,
+    }),
+  )
+}
+
+///|
+async fn Browser::tests(
+  self : Browser,
+  filename : String,
+  output : String,
+) -> Unit {
+  self.upload(filename)
+  self.wait_for(
+    "document.querySelector('#document-surface')?.dataset.pdfPainted === 'true' && document.querySelector('[data-pdf-item]') !== null",
+  )
+  self.check(
+    "PDF preview loads real pages and fonts", "document.querySelectorAll('.pdfViewer .page').length === 4 && document.querySelector('.textLayer').textContent.includes('Office Viewer PDF sample')",
+  )
+  self.check(
+    "canvas contains painted text and vectors",
+    (
+      #| (() => { const c = document.querySelector('.page canvas'); const p = c.getContext('2d').getImageData(0,0,c.width,c.height).data; let ink=0; for(let i=0;i<p.length;i+=4) if(p[i+3] && Math.min(p[i],p[i+1],p[i+2])<180) ink++; return ink>1000; })()
+    ),
+  )
+  ignore(
+    self.evaluate(
+      "document.querySelector('button[aria-label=Selection]').click(); true",
+    ),
+  )
+  // The link annotation overlays the title, so select text after temporarily
+  // hiding only that link layer. Its existence is tested separately.
+  self.check(
+    "read-only URI annotations render", "document.querySelector('.annotationLayer a[href=\"https://example.com/\"]') !== null",
+  )
+  ignore(
+    self.evaluate(
+      "document.querySelector('.annotationLayer').style.visibility='hidden'; true",
+    ),
+  )
+  self.drag_title()
+  self.wait_for(
+    "document.querySelector('#selection-output').textContent.includes('office.selection.materialized.v1')",
+  )
+  self.check(
+    "native mouse selection produces exact UTF-16 endpoints and tagged roles",
+    (
+      #| (() => { const e=JSON.parse(document.querySelector('#selection-output').textContent); window.shortSelection=e; return e.selection.text==='Office Viewer' && getSelection().toString()==='Office Viewer' && e.source.readable && e.source.selector_schema===null && e.source.reference.start.offset_utf16===0 && e.source.reference.end.offset_utf16===13 && e.source.anchors[0].semantics.role_path.includes('H1') && e.source.anchors[0].geometry.precision==='selected-dom-range'; })()
+    ),
+  )
+  self.screenshot(output + "/desktop-selection.png")
+  ignore(
+    self.evaluate(
+      "document.querySelector('.annotationLayer').style.visibility=''; document.querySelectorAll('.mode-option')[2].click(); true",
+    ),
+  )
+  self.check(
+    "deferred output omits text and keeps a complete file reference",
+    (
+      #| (() => { const e=JSON.parse(document.querySelector('#selection-output').textContent); return e.mode==='deferred' && e.selection.text===null && e.source.reference_complete && e.source.file==='/mock/office/sample.pdf' && e.source.document.sha256.length===64; })()
+    ),
+  )
+  ignore(
+    self.evaluate("document.querySelector('.resolve-button').click(); true"),
+  )
+  self.wait_for(
+    "document.querySelector('#resolved-output').textContent === 'Office Viewer'",
+  )
+  self.check(
+    "deferred resolver rereads the document after clearing extracted page cache",
+    (
+      #| (async () => { const h=document.querySelector('#document-surface'); h.__officeViewerPdf.pages.clear(); const api=await h.__officeViewerPdfRuntime; const e=JSON.parse(await api.resolveSelection(h.id, document.querySelector('#selection-output').textContent)); return e.text==='Office Viewer' && e.anchors[0].geometry.precision==='whole-text-item'; })()
+    ),
+  )
+  self.check(
+    "resolver rejects changed file, bytes, parser and extraction options",
+    (
+      #| (async () => { const h=document.querySelector('#document-surface'), api=await h.__officeViewerPdfRuntime; const ref=JSON.parse(document.querySelector('#selection-output').textContent).source.reference; for(const change of [r=>r.file='/other.pdf',r=>r.document.sha256='0'.repeat(64),r=>r.document.parser.version='0',r=>r.text_content.disable_normalization=false,r=>r.end.offset_utf16=10000,r=>r.end=r.start]) { const r=structuredClone(ref); change(r); let rejected=false; try { await api.resolveSelection(h.id, r); } catch { rejected=true; } if(!rejected) return false; } return true; })()
+    ),
+  )
+  ignore(
+    self.evaluate(
+      "document.querySelector('#document-surface').__officeViewerPdf.viewer.currentPageNumber=2; true",
+    ),
+  )
+  self.wait_for(
+    "document.querySelector('.page[data-page-number=\"2\"] [data-pdf-item]') !== null",
+  )
+  ignore(
+    self.evaluate(
+      (
+        #| (() => { const first=[...document.querySelectorAll('.page[data-page-number="1"] [data-pdf-item]')].find(s=>s.textContent==='Office Viewer PDF sample'); const last=[...document.querySelectorAll('.page[data-page-number="2"] [data-pdf-item]')].find(s=>s.textContent.startsWith('Row 80:')); const r=document.createRange(); r.setStart(first.firstChild, 0); r.setEnd(last.firstChild, last.textContent.length); getSelection().removeAllRanges(); getSelection().addRange(r); return true; })()
+      ),
+    ),
+  )
+  self.wait_for(
+    "JSON.parse(document.querySelector('#selection-output').textContent).content.text_utf16_length > 3000",
+  )
+  self.check(
+    "cross-page selection keeps the complete range beyond the anchor limit",
+    (
+      #| (() => { const e=JSON.parse(document.querySelector('#selection-output').textContent); window.longSelection=e; return e.source.anchors_truncated && e.source.anchors.length===64 && e.source.anchor_count>64 && e.source.reference_complete && e.source.reference.start.page===1 && e.source.reference.end.page===2 && e.selection.pages.join(',')==='1,2'; })()
+    ),
+  )
+  self.check(
+    "all three output modes can resolve the same full range",
+    (
+      #| (async () => { const h=document.querySelector('#document-surface'), api=await h.__officeViewerPdfRuntime; let text=null; for(const i of [0,1,2]) { document.querySelectorAll('.mode-option')[i].click(); await new Promise(r=>setTimeout(r,30)); const e=JSON.parse(document.querySelector('#selection-output').textContent); if(i===0) text=e.selection.text; if(i===1 && (!e.content.truncated || e.content.included_utf16>1000)) return false; if(i===2 && e.selection.text!==null) return false; const full=JSON.parse(await api.resolveSelection(h.id,e)); if(full.text!==text || !text.includes('Row 80:') || full.anchors.length<=64 || !text.includes('\n\n')) return false; } return true; })()
+    ),
+  )
+  self.check(
+    "document metadata and outline are available",
+    (
+      #| (async () => { const h=document.querySelector('#document-surface'); const info=JSON.parse(await (await h.__officeViewerPdfRuntime).documentInfo(h.id)); return info.file==='/mock/office/sample.pdf' && info.document.page_count===4 && info.info.Title==='Office Viewer PDF fixture' && info.outline[0].title==='Sample document'; })()
+    ),
+  )
+  ignore(
+    self.evaluate(
+      "document.querySelector('button[aria-label=\"Clear selection\"]').click(); document.querySelector('button[aria-label=\"Close selection\"]').click(); document.querySelector('button[aria-label=\"Previous page\"]').click(); true",
+    ),
+  )
+  self.wait_for("document.querySelector('#pdf-page').value==='1'")
+  ignore(
+    self.evaluate(
+      (
+        #| (() => { const s=[...document.querySelectorAll('[data-pdf-item]')].find(s=>s.textContent==='Office Viewer PDF sample'); document.querySelector('.textLayer').focus(); getSelection().collapse(s.firstChild,0); return true; })()
+      ),
+    ),
+  )
+  ignore(
+    self.evaluate(
+      (
+        #| (() => { const s=[...document.querySelectorAll('[data-pdf-item]')].find(s=>s.textContent==='Office Viewer PDF sample'); getSelection().extend(s.firstChild,6); return true; })()
+      ),
+    ),
+  )
+  self.wait_for(
+    "document.querySelector('#selection-output').textContent.includes('\"text\": null') && JSON.parse(document.querySelector('#selection-output').textContent).source.reference.end.offset_utf16===6",
+  )
+  self.check(
+    "native cursor selection extends the source range", "getSelection().toString()==='Office' && JSON.parse(document.querySelector('#selection-output').textContent).source.reference.end.offset_utf16===6",
+  )
+  ignore(
+    self.evaluate(
+      "(() => { window.beforeZoom=JSON.parse(document.querySelector('#selection-output').textContent).source.anchors[0].geometry.bbox; const zoomInput=document.querySelector('#zoom-input'); zoomInput.value='140'; zoomInput.dispatchEvent(new Event('input',{bubbles:true})); return true; })()",
+    ),
+  )
+  self.wait_for(
+    "Math.abs(document.querySelector('#document-surface').__officeViewerPdf.viewer.currentScale-1.4)<.01 && document.querySelector('[data-pdf-item]') !== null",
+  )
+  ignore(
+    self.evaluate(
+      (
+        #| (() => { const s=[...document.querySelectorAll('[data-pdf-item]')].find(s=>s.textContent==='Office Viewer PDF sample'); const r=document.createRange(); r.setStart(s.firstChild,0); r.setEnd(s.firstChild,6); getSelection().removeAllRanges(); getSelection().addRange(r); return true; })()
+      ),
+    ),
+  )
+  @async.sleep(150)
+  self.check(
+    "PDF user coordinates stay stable when zoom changes",
+    (
+      #| (() => { const a=JSON.parse(document.querySelector('#selection-output').textContent).source.anchors[0].geometry; return a.precision==='selected-dom-range' && a.bbox.every((v,i)=>Math.abs(v-beforeZoom[i])<1.5); })()
+    ),
+  )
+  ignore(
+    self.evaluate(
+      "(() => { const searchInput=document.querySelector('.search-box'); searchInput.value='Row'; searchInput.dispatchEvent(new Event('input',{bubbles:true})); return true; })()",
+    ),
+  )
+  self.wait_for(
+    "document.querySelector('.search-count').textContent.includes('/ 80')",
+  )
+  self.check(
+    "PDF search highlights all matching text items", "document.querySelector('.textLayer .highlight')!==null && document.querySelector('.search-count').textContent.includes('/ 80')",
+  )
+  ignore(
+    self.evaluate(
+      "(() => { const searchInput=document.querySelector('.search-box'); searchInput.value=''; searchInput.dispatchEvent(new Event('input',{bubbles:true})); return true; })()",
+    ),
+  )
+  ignore(
+    self.evaluate(
+      "document.querySelector('button[aria-label=\"Rotate clockwise\"]').click(); true",
+    ),
+  )
+  self.wait_for(
+    "document.querySelector('#document-surface').__officeViewerPdf.viewer.pagesRotation===90",
+  )
+  ignore(
+    self.evaluate(
+      "(() => { const pageInput=document.querySelector('#pdf-page'); pageInput.value='3'; pageInput.dispatchEvent(new Event('change',{bubbles:true})); return true; })()",
+    ),
+  )
+  self.wait_for(
+    "document.querySelector('#pdf-page').value==='3' && document.querySelector('#document-surface').__officeViewerPdf.viewer.currentPageNumber===3 && document.querySelector('.page[data-page-number=\"3\"] [data-pdf-item]') !== null",
+  )
+  ignore(
+    self.evaluate(
+      (
+        #| (() => { const s=document.querySelector('.page[data-page-number="3"] [data-pdf-item]'); const r=document.createRange(); r.setStart(s.firstChild,0); r.setEnd(s.firstChild,s.textContent.length); getSelection().removeAllRanges(); getSelection().addRange(r); return true; })()
+      ),
+    ),
+  )
+  self.wait_for(
+    "JSON.parse(document.querySelector('#selection-output').textContent).source.reference.start.page===3",
+  )
+  self.check(
+    "rotated cropped pages preserve page user units and finite selection quads",
+    (
+      #| (() => { const e=JSON.parse(document.querySelector('#selection-output').textContent), g=e.source.anchors[0].geometry, p=e.selection.page_info[0]; return p.intrinsic_rotation===90 && p.user_unit===2 && p.view_box.join(',')==='20,10,380,280' && g.space==='pdf-page-user-space' && g.user_unit===2 && g.precision==='selected-dom-range' && g.quads.flat(2).every(Number.isFinite) && g.bbox[0]>20 && g.bbox[2]<380; })()
+    ),
+  )
+  self.screenshot(output + "/desktop-rotated.png")
+  ignore(
+    self.evaluate(
+      "document.querySelector('button[aria-label=\"Clear selection\"]').click(); document.querySelector('button[aria-label=\"Next page\"]').click(); true",
+    ),
+  )
+  self.wait_for(
+    "document.querySelector('.page[data-page-number=\"4\"] canvas')!==null && document.querySelector('#pdf-page').value==='4'",
+  )
+  self.check(
+    "image-only PDF pages paint without inventing selectable text",
+    (
+      #| (async () => { const s=document.querySelector('#document-surface').__officeViewerPdf; const page=await s.pageData(4); const c=document.querySelector('.page[data-page-number="4"] canvas'), data=c.getContext('2d').getImageData(0,0,c.width,c.height).data; let colored=0; for(let i=0;i<data.length;i+=4) if(Math.max(data[i],data[i+1],data[i+2])-Math.min(data[i],data[i+1],data[i+2])>40) colored++; return page.entries.length===0 && colored>1000 && document.querySelector('#selection-output').textContent==='No selection.'; })()
+    ),
+  )
+  ignore(
+    self.command("Emulation.setDeviceMetricsOverride", params={
+      "width": 390,
+      "height": 844,
+      "deviceScaleFactor": 1,
+      "mobile": true,
+    }),
+  )
+  self.upload(filename)
+  self.wait_for(
+    "document.querySelector('#document-surface')?.dataset.pdfPainted==='true' && document.querySelector('[data-pdf-item]')!==null",
+  )
+  self.check(
+    "mobile PDF fits the page and toolbar without document overflow",
+    (
+      #| (() => { const c=document.querySelector('.pdf-container'), page=document.querySelector('.page'), r=page.getBoundingClientRect(); return document.documentElement.scrollWidth<=390 && c.scrollWidth<=c.clientWidth+2 && r.width<=c.clientWidth && r.width>300; })()
+    ),
+  )
+  self.screenshot(output + "/mobile.png")
+  ignore(
+    self.evaluate(
+      "document.querySelector('button[aria-label=Selection]').click(); true",
+    ),
+  )
+  self.wait_for("document.querySelector('.side-panel.open')!==null")
+  self.check(
+    "mobile selection panel and commands remain inside the viewport",
+    (
+      #| (() => { const p=document.querySelector('.side-panel.open').getBoundingClientRect(); return p.left>=0 && p.right<=innerWidth && [...document.querySelectorAll('.side-panel.open button')].every(b=>b.getBoundingClientRect().right<=innerWidth); })()
+    ),
+  )
+  self.screenshot(output + "/mobile-selection.png")
+  ignore(
+    self.evaluate(
+      "document.querySelector('button[aria-label=\"Close selection\"]').click(); true",
+    ),
+  )
+  @fs.write_file(output + "/invalid.pdf", b"invalid PDF data")
+  self.upload(@env.current_dir().unwrap() + "/" + output + "/invalid.pdf")
+  self.wait_for(
+    "document.querySelector('.status-selection').textContent.includes('Invalid PDF')",
+  )
+  self.upload(filename)
+  self.wait_for(
+    "document.querySelector('#document-surface')?.dataset.pdfPainted==='true'",
+  )
+  self.check(
+    "a malformed PDF does not prevent the next file from rendering", "document.querySelectorAll('.page').length===4 && document.querySelector('.status-selection').textContent==='Ready.'",
+  )
+  self.upload(@env.current_dir().unwrap() + "/" + output + "/invalid.pdf")
+  self.upload(filename)
+  self.wait_for(
+    "document.querySelector('#document-surface')?.dataset.pdfPainted==='true'",
+  )
+  @async.sleep(200)
+  self.check(
+    "rapid file switches discard stale loading and error callbacks", "document.querySelector('.status-file').textContent.includes('sample.pdf') && document.querySelector('.status-selection').textContent==='Ready.' && document.querySelectorAll('.pdf-container').length===1",
+  )
+}
+
+///|
+async fn Browser::reference_fixtures(
+  self : Browser,
+  directory : String,
+  filename : String,
+  output : String,
+) -> Unit {
+  for
+    name in [
+      "pr6531_1.pdf", "90ms_rksj_h_sample.pdf", "tracemonkey.pdf", "vertical.pdf",
+    ] {
+    guard @fs.exists(directory + "/" + name) else {
+      fail("Missing optional PDF.js fixture: " + name)
+    }
+  }
+  ignore(
+    self.command("Emulation.setDeviceMetricsOverride", params={
+      "width": 1280,
+      "height": 900,
+      "deviceScaleFactor": 1,
+      "mobile": false,
+    }),
+  )
+  self.upload(directory + "/pr6531_1.pdf")
+  self.wait_for("!document.querySelector('.modal-backdrop').hidden")
+  ignore(
+    self.evaluate(
+      "(() => { const input=document.querySelector('#pdf-password'); input.value='qwerty'; input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()",
+    ),
+  )
+  self.wait_for(
+    "!document.querySelector('.password-dialog button[type=submit]').disabled",
+  )
+  ignore(
+    self.evaluate(
+      "document.querySelector('.password-dialog').requestSubmit(); true",
+    ),
+  )
+  self.wait_for(
+    "!document.querySelector('.modal-backdrop').hidden && !document.querySelector('.password-error').hidden",
+  )
+  self.check(
+    "incorrect PDF passwords can be retried without retaining input", "document.querySelector('#pdf-password').value==='' && document.querySelector('.status-selection').textContent==='Password required.'",
+  )
+  ignore(
+    self.evaluate(
+      "(() => { const input=document.querySelector('#pdf-password'); input.value='asdfasdf'; input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()",
+    ),
+  )
+  self.wait_for(
+    "!document.querySelector('.password-dialog button[type=submit]').disabled",
+  )
+  ignore(
+    self.evaluate(
+      "document.querySelector('.password-dialog').requestSubmit(); true",
+    ),
+  )
+  self.wait_for(
+    "document.querySelector('#document-surface')?.dataset.pdfPainted==='true'",
+  )
+  self.check(
+    "password-protected PDFs render after unlocking", "document.querySelector('.modal-backdrop').hidden && document.querySelector('#pdf-password').value==='' && document.querySelector('.status-selection').textContent==='Ready.' && document.querySelector('.page canvas')!==null",
+  )
+  self.screenshot(output + "/encrypted.png")
+  self.upload(directory + "/pr6531_1.pdf")
+  self.wait_for("!document.querySelector('.modal-backdrop').hidden")
+  ignore(
+    self.evaluate(
+      "document.querySelector('.password-dialog button[type=button]').click(); true",
+    ),
+  )
+  self.wait_for(
+    "document.querySelector('.modal-backdrop').hidden && document.querySelector('.status-selection').textContent==='PDF loading cancelled.'",
+  )
+  self.upload(filename)
+  self.wait_for(
+    "document.querySelector('#document-surface')?.dataset.pdfPainted==='true'",
+  )
+  self.check(
+    "cancelled password requests release the old session", "document.querySelectorAll('.pdf-container').length===1 && document.querySelector('.status-selection').textContent==='Ready.'",
+  )
+
+  self.upload(directory + "/90ms_rksj_h_sample.pdf")
+  self.wait_for(
+    "document.querySelector('#document-surface')?.dataset.pdfPainted==='true' && [...document.querySelectorAll('[data-pdf-item]')].some(s=>s.textContent==='日本語テスト')",
+  )
+  ignore(
+    self.evaluate(
+      "(() => { const span=[...document.querySelectorAll('[data-pdf-item]')].find(s=>s.textContent==='日本語テスト'); const range=document.createRange(); range.selectNodeContents(span); getSelection().removeAllRanges(); getSelection().addRange(range); return true; })()",
+    ),
+  )
+  self.wait_for(
+    "document.querySelector('#selection-output').textContent.includes('office.selection.materialized.v1')",
+  )
+  self.check(
+    "local CMaps preserve CJK text and exact deferred resolution",
+    (
+      #| (async () => { const host=document.querySelector('#document-surface'), api=await host.__officeViewerPdfRuntime; const selection=JSON.parse(document.querySelector('#selection-output').textContent); const resolved=JSON.parse(await api.resolveSelection(host.id,selection)); return resolved.text==='日本語テスト' && selection.source.reference_complete && resolved.anchors[0].end_utf16===6; })()
+    ),
+  )
+  self.screenshot(output + "/cjk.png")
+
+  self.upload(directory + "/tracemonkey.pdf")
+  self.wait_for(
+    "document.querySelector('#document-surface')?.dataset.pdfPainted==='true' && document.querySelector('[data-pdf-item]')!==null",
+  )
+  self.check(
+    "embedded fonts render in a real multipage paper", "document.querySelectorAll('.page').length===14 && document.querySelector('.textLayer').textContent.includes('Trace') && document.querySelector('.page canvas').width>0",
+  )
+  ignore(
+    self.evaluate(
+      "(() => { const span=[...document.querySelectorAll('[data-pdf-item]')].find(s=>s.textContent.trim().length>10); const range=document.createRange(); range.setStart(span.firstChild,0); range.setEnd(span.firstChild,10); getSelection().removeAllRanges(); getSelection().addRange(range); window.fixtureSelected=span.textContent.slice(0,10); return true; })()",
+    ),
+  )
+  self.wait_for(
+    "document.querySelector('#selection-output').textContent.includes('office.selection.materialized.v1')",
+  )
+  self.check(
+    "embedded-font text joins the visual selection without guessed selectors",
+    (
+      #| (async () => { const host=document.querySelector('#document-surface'), api=await host.__officeViewerPdfRuntime; const selection=JSON.parse(document.querySelector('#selection-output').textContent); const resolved=JSON.parse(await api.resolveSelection(host.id,selection)); return resolved.text===window.fixtureSelected && selection.source.selectors.length===0 && selection.source.reference_complete; })()
+    ),
+  )
+  self.screenshot(output + "/embedded-fonts.png")
+
+  self.upload(directory + "/vertical.pdf")
+  self.wait_for(
+    "document.querySelector('#document-surface')?.dataset.pdfPainted==='true' && document.querySelector('[data-pdf-item]')!==null",
+  )
+  ignore(
+    self.evaluate(
+      (
+        #| (async () => { const host=document.querySelector('#document-surface'), mapping=await host.__officeViewerPdf.mapping(1); const entry=mapping.entries.find(e=>mapping.data.content.styles[e.item.fontName].vertical && e.item.str.trim()); if(!entry) throw new Error('No vertical text fixture item'); const range=document.createRange(); range.selectNodeContents(entry.div); getSelection().removeAllRanges(); getSelection().addRange(range); window.fixtureSelected=entry.item.str; return true; })()
+      ),
+    ),
+  )
+  self.wait_for(
+    "document.querySelector('#selection-output').textContent.includes('office.selection.materialized.v1')",
+  )
+  self.check(
+    "vertical text resolves with whole-item geometry covering the selected item",
+    (
+      #| (async () => { const host=document.querySelector('#document-surface'), api=await host.__officeViewerPdfRuntime; const selection=JSON.parse(document.querySelector('#selection-output').textContent); const resolved=JSON.parse(await api.resolveSelection(host.id,selection)); const a=selection.source.anchors[0].geometry.bbox, b=resolved.anchors[0].geometry.bbox; const overlap=Math.max(0,Math.min(a[2],b[2])-Math.max(a[0],b[0]))*Math.max(0,Math.min(a[3],b[3])-Math.max(a[1],b[1])); return (resolved.text===window.fixtureSelected && resolved.anchors[0].dir==='ttb' && b.every(Number.isFinite) && overlap>0) || {selected:window.fixtureSelected, resolved:resolved.text, anchor:resolved.anchors[0], native:a, overlap}; })()
+    ),
+  )
+  self.screenshot(output + "/vertical.png")
+}
+
+///|
+async fn main {
+  let args = @env.args()
+  let base = args.get(1).unwrap_or("http://127.0.0.1:4311")
+  let chrome = args
+    .get(2)
+    .unwrap_or("/root/.cache/ms-playwright/chromium-1223/chrome-linux/chrome")
+  let output = "_build/pdf-browser-\{@env.now()}"
+  @fs.mkdir(output, recursive=true)
+  @fs.write_file(output + "/sample.pdf", fixture_pdf())
+  let cwd = @env.current_dir().unwrap()
+  @async.with_task_group(group => {
+    let log = @process.redirect_to_file(output + "/chromium.log")
+    defer log.close()
+    let process = @process.spawn(
+      group,
+      chrome,
+      [
+        "--headless",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--remote-debugging-port=0",
+        "--remote-allow-origins=*",
+        "--user-data-dir=" + cwd + "/" + output + "/profile",
+        "--window-size=1280,900",
+        "about:blank",
+      ],
+      stdout=log,
+      stderr=log,
+    )
+    defer process.cancel()
+    let port_path = output + "/profile/DevToolsActivePort"
+    for _ in 0..<400 {
+      if @fs.exists(port_path) {
+        break
+      }
+      @async.sleep(25)
+    }
+    guard @fs.exists(port_path) else { fail("Chromium did not start") }
+    let port = @fs.read_file(port_path)
+      .text()
+      .split("\n")
+      .next()
+      .unwrap()
+      .to_owned()
+    let (response, body) = @http.put(
+      "http://127.0.0.1:" + port + "/json/new?about:blank",
+      b"",
+    )
+    guard response.code == 200 else {
+      fail("Chromium failed to create a target")
+    }
+    guard @json.parse(body.text())
+      is { "webSocketDebuggerUrl": String(url), .. } else {
+      fail("Missing CDP URL")
+    }
+    let browser : Browser = {
+      socket: @websocket.connect(url),
+      id: 0,
+      errors: [],
+      checks: [],
+    }
+    defer browser.socket.close()
+    ignore(browser.command("Page.enable"))
+    ignore(browser.command("Runtime.enable"))
+    ignore(
+      browser.command("Emulation.setDeviceMetricsOverride", params={
+        "width": 1280,
+        "height": 900,
+        "deviceScaleFactor": 1,
+        "mobile": false,
+      }),
+    )
+    ignore(browser.command("Page.navigate", params={ "url": base }))
+    browser.wait_for("document.querySelector('#file-input') !== null")
+    try {
+      browser.tests(cwd + "/" + output + "/sample.pdf", output)
+      match args.get(3) {
+        Some(directory) =>
+          browser.reference_fixtures(
+            directory,
+            cwd + "/" + output + "/sample.pdf",
+            output,
+          )
+        None =>
+          println(
+            "Optional PDF.js reference fixtures skipped (pass their absolute directory as argument 3).",
+          )
+      }
+      guard browser.errors.is_empty() else {
+        fail(
+          "Uncaught browser exceptions: " +
+          Json::array(browser.errors).stringify(),
+        )
+      }
+    } catch {
+      error => {
+        browser.screenshot(output + "/failure.png")
+        let state = browser.evaluate(
+          "({url:location.href, html:document.body.innerHTML.slice(0,20000)})",
+        )
+        @fs.write_file(
+          output + "/failure.json",
+          @utf8.encode(
+            ({ "state": state, "exceptions": browser.errors } : Json).stringify(
+              indent=2,
+            ),
+          ),
+        )
+        println("Artifacts: " + output)
+        fail(error.to_string())
+      }
+    }
+    @fs.write_file(
+      output + "/report.json",
+      @utf8.encode(
+        (
+          {
+            "checks": browser.checks,
+            "exceptions": browser.errors,
+            "url": base,
+          } : Json).stringify(indent=2),
+      ),
+    )
+    println("Artifacts: " + output)
+  })
+}

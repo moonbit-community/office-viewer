@@ -12,6 +12,6 @@ import {
 
 license = "Apache-2.0"
 
-description = "A standalone read-only Word and Excel viewer built with MoonBit."
+description = "A read-only DOCX, XLSX, and PDF viewer with structured selections."
 
 preferred_target = "js"

@@ -1009,3 +1009,15 @@ extern "js" fn select_surface_annotation(
   #|   try { return host.__officeSelectAnnotation(JSON.parse(itemJson)); }
   #|   catch (_) { return false; }
   #| }
+
+///|
+#cfg(target="js")
+extern "js" fn clear_surface_selection(surface_id : String) =
+  #| id => {
+  #|   const host = document.getElementById(id);
+  #|   const selection = window.getSelection();
+  #|   if (host && selection?.anchorNode && host.contains(selection.anchorNode)) selection.removeAllRanges();
+  #|   for (const cell of host?.querySelectorAll('.office-cell-selected, .office-cell-active') || []) {
+  #|     cell.classList.remove('office-cell-selected', 'office-cell-active');
+  #|   }
+  #| }
