@@ -20,8 +20,6 @@ jobs:
     defaults:
       run:
         working-directory: office-viewer
-    env:
-      MOON_HOME: ${{ runner.temp }}/moon
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,6 +46,8 @@ jobs:
         env:
           MOONBIT_VERSION: 0.10.14%2B7d59c7ec9
         run: |
+          export MOON_HOME="$RUNNER_TEMP/moon"
+          echo "MOON_HOME=$MOON_HOME" >> "$GITHUB_ENV"
           mkdir -p "$MOON_HOME/lib"
           curl --fail --location --retry 3 "https://cli.moonbitlang.com/binaries/$MOONBIT_VERSION/moonbit-linux-x86_64.tar.gz" -o "$RUNNER_TEMP/moonbit.tar.gz"
           echo "9226694de9ff978db1ecf820b7710c4224e84ec7a76b19a222d96f0cd4e31b6a  $RUNNER_TEMP/moonbit.tar.gz" | sha256sum --check
