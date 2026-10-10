@@ -1,37 +1,102 @@
-name: Deploy Office Viewer
+name: Build and deploy Office Viewer
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+  cancel-in-progress: false
 
 jobs:
+  build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: office-viewer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: office-viewer
+          persist-credentials: false
+      - name: Checkout compatible Office reader
+        uses: actions/checkout@v4
+        with:
+          repository: moonbitlang/office.mbt
+          ref: 59596ed5181382494ae5e5a151e2e954a8350001
+          path: office.mbt
+          persist-credentials: false
+      - name: Checkout Rabbita 0.16.3
+        uses: actions/checkout@v4
+        with:
+          repository: moonbit-community/rabbita
+          ref: d31819b4b59653550af5fcd3c1bc5c424caae64a
+          path: rabbita
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned official MoonBit toolchain
+        env:
+          MOONBIT_VERSION: 0.10.14%2B7d59c7ec9
+        run: |
+          export MOON_HOME="$RUNNER_TEMP/moon"
+          echo "MOON_HOME=$MOON_HOME" >> "$GITHUB_ENV"
+          mkdir -p "$MOON_HOME/lib"
+          curl --fail --location --retry 3 "https://cli.moonbitlang.com/binaries/$MOONBIT_VERSION/moonbit-linux-x86_64.tar.gz" -o "$RUNNER_TEMP/moonbit.tar.gz"
+          echo "9226694de9ff978db1ecf820b7710c4224e84ec7a76b19a222d96f0cd4e31b6a  $RUNNER_TEMP/moonbit.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/moonbit.tar.gz" -C "$MOON_HOME"
+          chmod +x "$MOON_HOME"/bin/* "$MOON_HOME/bin/internal/tcc"
+          curl --fail --location --retry 3 "https://cli.moonbitlang.com/cores/core-$MOONBIT_VERSION.tar.gz" -o "$RUNNER_TEMP/core.tar.gz"
+          echo "6f18b8fdea18f85e628a75e4a1bd3977c5a5c9c6a836fd8824192b0e6bd91b14  $RUNNER_TEMP/core.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/core.tar.gz" -C "$MOON_HOME/lib"
+          export PATH="$MOON_HOME/bin:$PATH"
+          echo "$MOON_HOME/bin" >> "$GITHUB_PATH"
+          moon -C "$MOON_HOME/lib/core" bundle --warn-list -a --all
+          moon -C "$MOON_HOME/lib/core" bundle --warn-list -a --target wasm-gc --quiet
+          moon version --all
+      - name: Resolve workspace dependencies
+        run: |
+          moon -C ../office.mbt update
+          moon -C ../office.mbt check --target js ooxml/xml
+          moon -C ../rabbita update
+          moon update
+      - name: Install pinned minifier
+        run: |
+          npm install --prefix "$RUNNER_TEMP/minifier" --ignore-scripts --no-audit --no-fund terser@5.51.2
+          echo "$RUNNER_TEMP/minifier/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Check and test
+        run: |
+          moon check --target js
+          moon test --target js -p moonbit-community/office-viewer/viewer
+          moon test --target js -p moonbit-community/office-viewer/cmd/browser
+      - name: Build Pages artifact from source
+        run: bash scripts/build-pages.sh
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: office-viewer/dist
+
   deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
       - name: Configure Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - name: Upload static bundle
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

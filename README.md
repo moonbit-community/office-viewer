@@ -16,26 +16,63 @@ silently replaced with an incorrect value.
 
 ## Run locally
 
-The MoonBit workspace currently uses the local `office.mbt` and `rabbita`
-checkouts for the layout, reader, and browser runtime packages. Keep them next
-to this repository as `../office.mbt` and `../rabbita` when running the commands
-below.
-
-From the Rabbita checkout:
+The workspace uses pinned sibling checkouts. With this repository checked out as
+`office-viewer`, prepare the dependencies from its parent directory:
 
 ```sh
-moon run --target native warren -- \
-  -C /workspace/OfficeViewer/office-viewer \
-  dev --direct --browser-entry cmd/browser --server-entry "" --port 4310
+git clone https://github.com/moonbitlang/office.mbt.git
+git -C office.mbt checkout 59596ed5181382494ae5e5a151e2e954a8350001
+git clone https://github.com/moonbit-community/rabbita.git
+git -C rabbita checkout d31819b4b59653550af5fcd3c1bc5c424caae64a
 ```
 
-Open <http://127.0.0.1:4310/>. A release bundle can be generated with:
+Use the [official MoonBit toolchain](https://www.moonbitlang.com/download)
+`0.10.14+7d59c7ec9` (moon `0.1.20260920`) and Node.js 22. From `office-viewer`,
+resolve dependencies in this order; the Office workspace supplies the local XML
+package referenced by `moon.work`:
 
 ```sh
-moon run --target native warren -- \
-  -C /workspace/OfficeViewer/office-viewer \
-  build --browser-entry cmd/browser --server-entry "" --dist dist
+moon -C ../office.mbt update
+moon -C ../office.mbt check --target js ooxml/xml
+moon -C ../rabbita update
+moon update
+moon check --target js
+moon test --target js -p moonbit-community/office-viewer/viewer
+moon test --target js -p moonbit-community/office-viewer/cmd/browser
 ```
+
+Start the development server from `office-viewer`:
+
+```sh
+moon -C ../rabbita run --target native warren -- \
+  -C "$PWD" dev --direct --browser-entry cmd/browser --server-entry "" --port 4310
+```
+
+Open <http://127.0.0.1:4310/>. To build the same release artifact as CI, install
+Terser in a temporary directory and put it on `PATH`:
+
+```sh
+minifier="$(mktemp -d)"
+npm install --prefix "$minifier" --ignore-scripts --no-audit --no-fund terser@5.51.2
+PATH="$minifier/node_modules/.bin:$PATH" bash scripts/build-pages.sh
+```
+
+The generated `dist/` is ignored by Git; an optional first argument selects a
+different output directory inside the repository (required by Warren). The script
+uses Warren to compile/minify the browser entry and copy `public/`, including the existing bundled fonts. It fingerprints
+JS/CSS filenames and writes `build-info.json` with the source revision and full
+asset SHA-256 hashes. It does not regenerate fonts.
+
+## Continuous deployment
+
+[The Pages workflow](.github/workflows/pages.yml) checks, tests, and builds on
+pull requests and every push to `main`. PRs never deploy. After a successful main
+build (or a manual run on `main`), it uploads the generated temporary artifact
+and deploys it with GitHub Pages. Build output is not committed to the repository.
+The workflow pins the two sibling revisions, the official compiler/core archives
+and their checksums, and Terser. Update these pins together after compatibility
+checks. The deployed `build-info.json` identifies the exact source commit and
+asset contents.
 
 The current selection layer is deliberately read-only: Word uses browser text
 selection inside positioned page SVG, and Excel uses rectangle selection over
@@ -91,9 +128,10 @@ the bundled files. The default mode never silently changes with the host
 machine; the browser runtime records both bundled loading and the selected
 font mode.
 
-To regenerate the bundled font files after changing the upstream font data:
+From the Office checkout, regenerate bundled fonts only after changing the
+upstream font data:
 
 ```sh
 moon run --target native ./pagelayout/cmd/pagelayout -- \
-  export-fonts /workspace/OfficeViewer/office-viewer/public/fonts
+  export-fonts ../office-viewer/public/fonts
 ```
