@@ -62,6 +62,7 @@ pub fn interactions_command(
         config.surface_id,
         surface_kind(config.kind),
         config.document_file,
+        config.surface_html,
         selection => scheduler.add(on_selection(selection)),
       )
     },
@@ -102,4 +103,26 @@ fn surface_kind(kind : DocumentKind?) -> String {
     Some(Excel) => "excel"
     None => ""
   }
+}
+
+///|
+/// Navigate to an annotation in the currently installed surface. DOCX uses
+/// proven paragraph context only, not a claimed exact comment range. False
+/// means the cell/paragraph has no matching rendered node (including notes
+/// outside preview bounds and unjoined Word documents).
+pub fn focus_annotation_command(
+  surface_id : String,
+  annotation : Json,
+  on_result? : (Bool) -> @rabbita.Cmd,
+) -> @rabbita.Cmd {
+  @cmd.custom_cmd(
+    scheduler => {
+      let found = focus_surface_annotation(surface_id, annotation.stringify())
+      match on_result {
+        Some(callback) => scheduler.add(callback(found))
+        None => ()
+      }
+    },
+    kind=@cmd.after_render,
+  )
 }

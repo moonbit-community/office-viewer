@@ -1,0 +1,164 @@
+# Read-only annotations (`office.annotations.v1`)
+
+The reusable viewer exposes annotations independently of its browser UI:
+
+```mbt
+match @viewer.read_annotations("review.docx", "/docs/review.docx", bytes) {
+  Ok(envelope) => envelope.stringify(indent=2)
+  Err(error) => error
+}
+```
+
+`@viewer.render_document(name, file, bytes)` returns the same projection in
+`RenderedDocument.annotations`. It reuses the parsed reader/workbook rather
+than calling the standalone extractor again. Rendering also embeds the envelope
+as inert, escaped JSON for the surface interactions. Hosts do not need to scrape
+the inspector or DOM to obtain annotation data.
+
+## Envelope and identity
+
+```json
+{
+  "schema": "office.annotations.v1",
+  "file": "/docs/review.xlsx",
+  "document": {
+    "name": "review.xlsx",
+    "format": "xlsx",
+    "identity": "host-file+sha256",
+    "sha256": "<SHA-256 of the source bytes>"
+  },
+  "read_only": true,
+  "items": [{
+    "id": "xlsx.note:0:0",
+    "document": {"file": "/docs/review.xlsx", "sha256": "<same SHA-256>"},
+    "type": "xlsx.note",
+    "source_id": "B3",
+    "defined": true,
+    "text": "Please check the total.",
+    "text_status": "available",
+    "author": "Ada",
+    "author_id": 0,
+    "initials": null,
+    "date": null,
+    "resolved": null,
+    "parent_id": null,
+    "parent_source_id": null,
+    "thread_status": "not-applicable",
+    "anchor": {
+      "kind": "xlsx",
+      "sheet": "Budget",
+      "cell": "B3",
+      "row": 3,
+      "column": 2,
+      "confidence": "exact-cell",
+      "preview": "within-preview"
+    }
+  }],
+  "support": {
+    "scope": ["xlsx.note"],
+    "completeness": "partial",
+    "traditional_notes": "supported",
+    "threaded_comments": "unsupported",
+    "threaded_comments_presence": "unknown",
+    "preview_max_rows": 1000,
+    "preview_max_columns": 256
+  },
+  "warnings": ["Only traditional Excel Notes are read. Modern threaded comments are unsupported and their presence is not detected. An empty Notes list does not prove the workbook has no comments."]
+}
+```
+
+`file` is the host-owned document identity already used by `office.selection.v1`.
+The standalone app passes `/mock/office/<filename>`; that path is not a real
+filesystem handle or a globally unique identity. Hosts must supply their own
+stable file identity. `document.sha256` binds the projection to the exact input
+bytes; every item carries the same file/hash identity. Focus rejects requests
+from another file or revision even if their ordinal IDs coincide. Item IDs are
+unique only inside this loaded snapshot, and must not be persisted as
+revision-stable IDs.
+`source_id` preserves the underlying comment ID or Note cell address.
+
+`null` means absent/unknown (or not applicable for Notes), never `false`.
+An empty, successfully parsed body is a string; an unavailable or ambiguously
+identified Word body is `null` with `text_status: "missing" | "ambiguous"`.
+Ambiguous bodies are preserved in `body_candidates`, not arbitrarily joined to
+a duplicate ID. Plain text is exposed; rich comment formatting is not rendered.
+
+## Word comments and w15 replies
+
+- `type` is `docx.comment`. Author, initials, date, definition presence, raw
+  source ID, and optional `resolved` (`w15:done`) are preserved.
+- `parent_source_id` preserves the reader's parent ID; `parent_id` links to a
+  viewer item only when that parent source ID is unique. No recorded parent
+  is labeled `root-or-unknown`, rather than proving a comment is a thread root.
+- Replies retain their own anchors. A parent's anchor is not silently copied
+  onto an unanchored reply. Orphan, unresolved, and ambiguous items stay listed.
+- `source_anchors` preserves each reader anchor's story, start/end paths,
+  start/end boundary kind, and reference paths. Boundaries describe source
+  nodes, not exact character offsets. In particular, `inside_end` must not be
+  interpreted as the end of all text in a containing paragraph.
+- `anchor.locations` contains only explicit main-story endpoint/reference
+  paragraphs suitable for contextual navigation. It does not fill intervening
+  paragraphs. `granularity` is `paragraph-context`; `ranges` is empty until an
+  upstream API can prove exact offsets.
+- The browser navigates only to DOM text with a matching source part/path from
+  the existing all-or-nothing reader/layout join. If any layout/source join
+  fails, the full comments list remains available without guessed highlights.
+  A context highlight is never presented as the exact commented text range.
+- Modern `commentsIds`, `people`, and `commentsExtensible` sidecars are detected
+  by the reader and reported as unsupported. Reader diagnostics are retained.
+  `complete-supported-kinds` only describes the supported comment projection;
+  it is not a claim of full Office annotation or layout fidelity. A failed
+  annotation parse during rendering yields `completeness: "unavailable"` and
+  a warning instead of making an empty list look authoritative.
+
+## Excel traditional Notes
+
+All sheets and all parsed Notes are included, independently of the preview's
+1000-row/256-column bounds. `outside-preview` indicates a note beyond those
+bounds. `within-preview` does not guarantee an actual DOM cell: a Note-only
+cell, a merged-away cell, or a non-rendered cell may still have no visible node.
+Navigation requires the exact sheet and rendered cell. It switches sheets only
+when that exact target exists, and returns false otherwise.
+
+Modern Excel threaded comments, reply identity, and resolved state are not
+supported or detected. An empty Notes list must not be described as “no
+comments.” The envelope makes this limitation explicit even for an empty file.
+
+## Browser integration
+
+Call the existing `@viewer.interactions_command` after rendering the surface.
+It marks visible cells and mapped Word paragraph contexts, using the same JSON.
+Hosts can invoke:
+
+```mbt
+@viewer.focus_annotation_command(
+  "document-surface",
+  item,
+  on_result=found => emit(AnnotationFocused(found)),
+)
+```
+
+The callback reports whether a current rendered target was found. The
+standalone Comments panel keeps the list available on failure. It also exposes
+the whole JSON and reports clipboard failures honestly. All comment content is
+rendered as text; metadata escapes `<` before insertion in an inert data block.
+There are no editing, replying, resolving, writing, or save-back operations.
+Reinstalling interactions restores the canonical surface HTML before deriving
+coordinates, so reopening the same file does not count generated grid headers
+as source rows or duplicate wrappers/markers.
+
+## Reproducible local workspace
+
+This implementation is tested with the existing sibling-checkout workspace,
+not with the older registry versions listed in the viewer's manifest:
+
+- office-viewer base: `12be91f`
+- office.mbt: `59596ed5181382494ae5e5a151e2e954a8350001`
+  (`docx2html 0.6.1`, `mbtexcel 0.2.1`, `pagelayout 0.7.1`)
+- Rabbita: `rabbita-v0.16.3` / `d31819b4b59653550af5fcd3c1bc5c424caae64a`
+
+Keep those checkouts beside the viewer. Bootstrap office.mbt dependencies so
+the existing `../office.mbt/.mooncakes/Milky2018/xml` workspace member exists,
+then run `moon check --target js`, `moon test --target js`, and
+`moon build --target js` in this repository. Published dependency-only builds
+are not established by this change; no broad manifest upgrade is bundled here.

@@ -38,6 +38,7 @@ fn parse_document(payload : FilePayload) -> Result[LoadedDocument, String] {
         surface_html: document.surface_html,
         item_count: document.item_count,
         warning: document.warning,
+        annotations: document.annotations,
       })
     Err(error) => Err(error)
   }

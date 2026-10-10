@@ -68,12 +68,17 @@ extern "js" fn install_surface_interactions(
   surface_id : String,
   kind : String,
   document_file : String,
+  surface_html : String,
   on_selection : (String) -> Unit,
 ) =
-  #| (id, kind, documentFile, onSelection) => {
+  #| (id, kind, documentFile, surfaceHtml, onSelection) => {
   #|   const host = document.getElementById(id);
   #|   if (!host) return;
   #|   if (host.__officeViewerCleanup) host.__officeViewerCleanup();
+  #|   // RawHtml can remain unchanged when the same file is opened again.
+  #|   // Restore the canonical surface before deriving coordinates, rather
+  #|   // than re-reading our own added headers, wrappers, and Note markers.
+  #|   host.innerHTML = surfaceHtml;
   #|   const cleanups = [];
   #|   const add = (target, type, handler, options) => {
   #|     target.addEventListener(type, handler, options);
@@ -390,6 +395,59 @@ extern "js" fn install_surface_interactions(
   #|   }
   #|   enhanceExcelSurface();
   #|   applyExcelObjectLayout();
+  #|
+  #|   // Annotations share the public read-only envelope. Never interpolate
+  #|   // file content into HTML/CSS selectors, or guess a missing source join.
+  #|   let annotations = [];
+  #|   try {
+  #|     const data = host.querySelector('.office-annotations-metadata');
+  #|     const envelope = data ? JSON.parse(data.textContent || '{}') : {};
+  #|     if (envelope.schema === 'office.annotations.v1' && Array.isArray(envelope.items))
+  #|       annotations = envelope.items;
+  #|   } catch (_) {}
+  #|   const annotationTargets = (item) => {
+  #|     const anchor = item && item.anchor;
+  #|     if (!anchor) return [];
+  #|     if (kind === 'excel' && anchor.kind === 'xlsx') {
+  #|       return Array.from(host.querySelectorAll('td[data-cell]')).filter(cell =>
+  #|         cell.dataset.sheet === anchor.sheet && cell.dataset.cell === anchor.cell);
+  #|     }
+  #|     if (kind === 'word' && anchor.kind === 'docx' && Array.isArray(anchor.locations)) {
+  #|       return Array.from(host.querySelectorAll('svg text[data-source-path]')).filter(node =>
+  #|         anchor.locations.some(location => location.part === node.dataset.sourcePart &&
+  #|           location.path === node.dataset.sourcePath));
+  #|     }
+  #|     return [];
+  #|   };
+  #|   for (const item of annotations) {
+  #|     for (const node of annotationTargets(item)) {
+  #|       node.classList.add('office-has-annotation');
+  #|       const ids = JSON.parse(node.dataset.officeAnnotationIds || '[]');
+  #|       ids.push(item.id);
+  #|       node.dataset.officeAnnotationIds = JSON.stringify(ids);
+  #|       // A plain attribute is inert even when comment text contains markup.
+  #|       const label = `${item.author || 'Unknown author'}: ${item.text == null ? 'Text unavailable' : item.text}`;
+  #|       node.setAttribute('title', node.getAttribute('title') ? `${node.getAttribute('title')}\n${label}` : label);
+  #|     }
+  #|   }
+  #|   host.__officeFocusAnnotation = (request) => {
+  #|     const identity = request && request.document;
+  #|     const item = identity && typeof identity.file === 'string' &&
+  #|       typeof identity.sha256 === 'string' && annotations.find(candidate =>
+  #|         candidate.id === request.id && candidate.document &&
+  #|         candidate.document.file === identity.file &&
+  #|         candidate.document.sha256 === identity.sha256);
+  #|     for (const node of host.querySelectorAll('.office-annotation-focus'))
+  #|       node.classList.remove('office-annotation-focus');
+  #|     if (!item) return false;
+  #|     const targets = annotationTargets(item);
+  #|     if (targets.length === 0) return false;
+  #|     if (kind === 'excel') setExcelSheet(item.anchor.sheet);
+  #|     for (const node of targets) node.classList.add('office-annotation-focus');
+  #|     targets[0].scrollIntoView({block: 'center', inline: 'center'});
+  #|     return true;
+  #|   };
+  #|   cleanups.push(() => { delete host.__officeFocusAnnotation; });
   #|   if (kind === "excel") {
   #|     add(window, "resize", applyExcelObjectLayout);
   #|     if (document.fonts && document.fonts.ready)
@@ -602,4 +660,17 @@ extern "js" fn dispose_surface_interactions(surface_id : String) =
   #| (id) => {
   #|   const host = document.getElementById(id);
   #|   if (host && host.__officeViewerCleanup) host.__officeViewerCleanup();
+  #| }
+
+///|
+#cfg(target="js")
+extern "js" fn focus_surface_annotation(
+  surface_id : String,
+  item_json : String,
+) -> Bool =
+  #| (id, itemJson) => {
+  #|   const host = document.getElementById(id);
+  #|   if (!host || !host.__officeFocusAnnotation) return false;
+  #|   try { return host.__officeFocusAnnotation(JSON.parse(itemJson)); }
+  #|   catch (_) { return false; }
   #| }

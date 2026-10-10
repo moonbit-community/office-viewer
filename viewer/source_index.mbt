@@ -138,7 +138,12 @@ fn direct_run_entries(
             let path = "\{paragraph_path}/r[\{ordinal}]"
             let text = child.to_raw_text()
             let end = offset + text.length()
-            output.push({ path, start_utf16: offset, end_utf16: end, text, })
+            // Empty runs (including comment-reference runs) carry no text.
+            // Keep their ordinal in subsequent paths, but compare only
+            // text-carrying runs with the reader's full-text match.
+            if text != "" {
+              output.push({ path, start_utf16: offset, end_utf16: end, text, })
+            }
             offset = end
           }
           // A hyperlink or another wrapper changes the canonical ancestry.
@@ -264,11 +269,12 @@ fn source_paragraph(
 // The parsed DocumentElement tree is used only to establish run boundaries;
 // its concatenated text must equal the reader projection before a join is
 // accepted.
-fn build_word_source_index(bytes : Bytes) -> WordSourceIndex? {
+fn build_word_source_index_annotated(
+  annotated : @reader.DocxAnnotatedResult,
+) -> WordSourceIndex? {
   try {
-    let annotated = @docx2html.read_docx_annotated(bytes)
     let story = annotated.main_story_source()
-    let document = @docx2html.read_docx(bytes)
+    let document = annotated.result().document
     let anchor_index = @reader.docx_paragraph_anchor_index(annotated, story)
     let paragraphs = direct_body_paragraphs(document)
     let count = @reader.docx_direct_body_paragraph_count(annotated)

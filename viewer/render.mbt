@@ -18,6 +18,7 @@ pub(all) struct RenderedDocument {
   surface_html : String
   item_count : Int
   warning : String
+  annotations : Json
 } derive(Eq)
 
 ///|
@@ -304,7 +305,29 @@ pub fn render_document(
       Word => {
         let model = @docx.render_docx(bytes)
         let rendered_pages = @svg.render_pages(model)
-        let pages = match build_word_source_index(bytes) {
+        let annotated = Some(@docx2html.read_docx_annotated(bytes)) catch {
+          _ => None
+        }
+        let annotations = match annotated {
+          Some(value) => word_annotations(name, file, value)
+          None =>
+            annotation_envelope(
+              name,
+              file,
+              "docx",
+              [],
+              Json::object({ "completeness": Json::string("unavailable") }),
+              [
+                "The annotated Word reader failed. Comments are unavailable; this is not evidence that the document has no comments.",
+              ],
+            )
+        }
+        let index = match annotated {
+          Some(value) => build_word_source_index_annotated(value)
+          None => None
+        }
+        let annotations = bind_annotation_snapshot(annotations, bytes)
+        let pages = match index {
           Some(index) => decorate_word_pages(rendered_pages, model, index)
           None => rendered_pages
         }
@@ -312,13 +335,18 @@ pub fn render_document(
           kind,
           name,
           file,
-          surface_html: word_surface(pages),
+          surface_html: word_surface(pages) + annotations_script(annotations),
+          annotations,
           item_count: pages.length(),
           warning: "Word layout is read-only. Reader-backed paragraph selectors are emitted only when the source and PageModel text join completely; unsupported or ambiguous text remains physical-only.",
         })
       }
       Excel => {
         let workbook = @mbtexcel.read(bytes.exact_view())
+        let annotations = bind_annotation_snapshot(
+          excel_annotations(name, file, workbook),
+          bytes,
+        )
         let formula_metadata = excel_formula_metadata(workbook)
         let object_metadata = excel_object_metadata(workbook)
         normalize_formula_values_for_preview(workbook)
@@ -335,7 +363,9 @@ pub fn render_document(
           "<script type=\"application/json\" class=\"office-object-metadata\">" +
           object_metadata +
           "</script>" +
+          annotations_script(annotations) +
           "</div>",
+          annotations,
           item_count: workbook.get_sheet_list().length(),
           warning: "Excel cells are read-only. Formula results are normalized in the rendering copy when office.mbt can evaluate them; drawing anchors retain their source cell, offsets, and dimensions for browser layout. Cell addresses are derived from the rendered table coordinates and use the canonical office.xlsx selector shape.",
         })

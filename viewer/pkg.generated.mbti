@@ -15,6 +15,8 @@ pub fn dispose_interactions_command(String) -> @cmd.Cmd
 
 pub fn document_kind(String) -> DocumentKind?
 
+pub fn focus_annotation_command(String, Json, on_result? : (Bool) -> @cmd.Cmd) -> @cmd.Cmd
+
 pub fn interactions_command(SurfaceConfig, (String) -> @cmd.Cmd) -> @cmd.Cmd
 
 pub fn materialize_selection(String, SelectionMaterializationOptions) -> Result[String, String]
@@ -24,6 +26,8 @@ pub fn materialize_selection_deferred(String) -> Result[String, String]
 pub fn materialize_selection_full(String) -> Result[String, String]
 
 pub fn materialize_selection_preview(String, Int) -> Result[String, String]
+
+pub fn read_annotations(String, String, Bytes) -> Result[Json, String]
 
 pub fn render_document(String, String, Bytes) -> Result[RenderedDocument, String]
 
@@ -48,6 +52,7 @@ pub(all) struct RenderedDocument {
   surface_html : String
   item_count : Int
   warning : String
+  annotations : Json
 } derive(Eq)
 pub fn RenderedDocument::equal(Self, Self) -> Bool
 pub fn RenderedDocument::not_equal(Self, Self) -> Bool

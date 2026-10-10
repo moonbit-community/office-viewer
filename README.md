@@ -55,6 +55,14 @@ enters an Agent context. The APIs preserve the existing `office.mbt` file and
 selector fields and make UTF-16 omission counts explicit; see
 [`docs/embedding.md`](docs/embedding.md).
 
+Existing DOCX comments/w15 replies and Excel traditional Notes are available
+in the read-only Comments panel and through `@viewer.read_annotations` or
+`RenderedDocument.annotations`. The `office.annotations.v1` contract preserves
+missing metadata and explicit support limits. Word navigation shows only proven
+paragraph context; Notes beyond preview bounds remain in the list and JSON.
+See [`docs/annotations-model.md`](docs/annotations-model.md) for the API,
+unsupported modern-comment formats, and compatible sibling checkout versions.
+
 The reusable surface lives in [`viewer/`](viewer/). Its renderer and Rabbita
 surface are host-neutral: a standalone host can provide browser file bytes,
 while OpenSeek can provide bytes and the real `office.mbt` file path from its
