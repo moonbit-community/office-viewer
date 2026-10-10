@@ -85,6 +85,85 @@ Excel selector therefore follows the canonical `/xlsx/sheet[name=...]/cell[...]`
 shape for one cell and `/xlsx/sheet[name=...]/range[...]` for a rectangle,
 matching `office.mbt`'s selector parser.
 
+## Annotation-body selections
+
+Comments and Notes are separate selectable content, not document text or a cell
+value. Clicking **Select comment** selects the complete available body; dragging
+within one contextual comment body selects just that substring. Both paths use
+`kind: "annotation"` in the existing envelope:
+
+```json
+{
+  "schema": "office.selection.v1",
+  "kind": "annotation",
+  "format": "docx",
+  "file": "/docs/report.docx",
+  "document": {"file": "/docs/report.docx", "sha256": "<source-byte SHA-256>"},
+  "text": "selected words",
+  "annotation": {
+    "id": "docx.comment:0",
+    "type": "docx.comment",
+    "source_id": "17",
+    "author": "Ada",
+    "parent_id": null,
+    "resolved": false,
+    "anchor": {
+      "kind": "docx",
+      "granularity": "paragraph-context",
+      "confidence": "source-node",
+      "locations": [{"part": "word/document.xml", "path": "p[3]"}],
+      "ranges": []
+    }
+  },
+  "annotation_range": {
+    "scope": "text",
+    "start_utf16": 5,
+    "end_utf16": 19,
+    "body_utf16_length": 40
+  },
+  "anchors": []
+}
+```
+
+The half-open UTF-16 span is relative to the plain annotation body returned in
+`office.annotations.v1`, including its explicit line breaks and paragraph
+separators. It is never a span in the Word paragraph or Excel cell. A `whole`
+selection covers `[0, body_utf16_length)`. Cross-card and body-to-document ranges
+are not emitted as mixed selections. Missing or ambiguous bodies cannot be
+selected. Unknown author/thread/resolution metadata stays missing or null;
+`false` still means an explicitly open comment.
+
+The annotation reference retains the original type, source ID, author/thread
+fields, source anchors, and anchor confidence, but omits full body text and
+`body_candidates`. Only top-level `text` contains selected content. A Note uses
+`format: "xlsx"`, `annotation.type: "xlsx.note"`, and its original sheet/cell
+anchor. Off-preview Notes and unmapped Word comments can still be selected from
+the list without claiming a rendered location.
+
+Hosts can create the same envelope without DOM selection:
+
+```mbt
+@viewer.annotation_selection(item) // whole body
+@viewer.annotation_selection(item, start_utf16=5, end_utf16=19, scope="text")
+```
+
+The constructor rejects out-of-bounds spans and surrogate-pair splits. Item IDs
+are snapshot-local: always retain and match the source file plus SHA-256, not
+just an ID. This constructor projects metadata; it does not reread or authenticate
+a host-supplied item. Browser commands resolve the requested item against the
+currently installed snapshot before selecting it.
+
+All three materialization modes support this kind. Preview bounds only selected
+text; deferred removes it entirely while retaining the annotation identity and
+body range. Neither mode embeds the unselected body. Their source reference has
+`reference_kind: "annotation"`, `annotation_schema: "office.annotations.v1"`,
+`resolve_with: "read_annotations"`, `selector_schema: null`, and `readable: false`.
+Here `readable` means readable through the existing document selector route,
+which does not address comment bodies. To resolve, re-extract annotations from
+the same source-byte hash, find the item ID, and apply the recorded body span.
+Never substitute the surrounding paragraph/cell text. Consumers must handle the
+new kind explicitly instead of assuming every selection is document content.
+
 ## Layers
 
 The implementation is deliberately split into three layers:

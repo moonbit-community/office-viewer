@@ -104,3 +104,11 @@ extern "js" fn copy_annotations_to_clipboard(
   #|     onComplete(false);
   #|   }
   #| }
+
+///|
+#cfg(target="js")
+extern "js" fn is_annotation_selection(selection : String) -> Bool =
+  #| (selection) => {
+  #|   try { return JSON.parse(selection).kind === 'annotation'; }
+  #|   catch (_) { return false; }
+  #| }

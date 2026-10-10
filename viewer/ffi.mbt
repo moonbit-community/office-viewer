@@ -5,7 +5,10 @@
 extern "js" fn set_surface_zoom(surface_id : String, zoom : Double) =
   #| (id, zoom) => {
   #|   const surface = document.getElementById(id);
-  #|   if (surface) surface.style.setProperty("--office-zoom", String(zoom));
+  #|   if (surface) {
+  #|     surface.style.setProperty("--office-zoom", String(zoom));
+  #|     if (surface.__officeLayoutAnnotations) surface.__officeLayoutAnnotations();
+  #|   }
   #| }
 
 ///|
@@ -70,8 +73,9 @@ extern "js" fn install_surface_interactions(
   document_file : String,
   surface_html : String,
   on_selection : (String) -> Unit,
+  on_annotation_selection : (String, Int, Int, String) -> Unit,
 ) =
-  #| (id, kind, documentFile, surfaceHtml, onSelection) => {
+  #| (id, kind, documentFile, surfaceHtml, onSelection, onAnnotationSelection) => {
   #|   const host = document.getElementById(id);
   #|   if (!host) return;
   #|   if (host.__officeViewerCleanup) host.__officeViewerCleanup();
@@ -80,6 +84,9 @@ extern "js" fn install_surface_interactions(
   #|   // than re-reading our own added headers, wrappers, and Note markers.
   #|   host.innerHTML = surfaceHtml;
   #|   const cleanups = [];
+  #|   let alive = true;
+  #|   let closeAnnotationContext = () => {};
+  #|   let cancelCellPointer = () => {};
   #|   const add = (target, type, handler, options) => {
   #|     target.addEventListener(type, handler, options);
   #|     cleanups.push(() => target.removeEventListener(type, handler, options));
@@ -94,7 +101,7 @@ extern "js" fn install_surface_interactions(
   #|     }
   #|     return name;
   #|   };
-  #|   const jsonSelection = (value) => onSelection(JSON.stringify(value, null, 2));
+  #|   const jsonSelection = value => { closeAnnotationContext(); onSelection(JSON.stringify(value, null, 2)); };
   #|   const nodeIsInside = (root, node) => root === node || root.contains(node);
   #|   const documentFormat = kind === "word" ? "docx" : "xlsx";
   #|
@@ -192,6 +199,8 @@ extern "js" fn install_surface_interactions(
   #|
   #|   const setExcelSheet = (sheet) => {
   #|     if (kind !== "excel") return;
+  #|     closeAnnotationContext();
+  #|     cancelCellPointer();
   #|     const sections = host.querySelectorAll("section[data-sheet]");
   #|     let active = null;
   #|     for (const section of sections) {
@@ -396,15 +405,47 @@ extern "js" fn install_surface_interactions(
   #|   enhanceExcelSurface();
   #|   applyExcelObjectLayout();
   #|
-  #|   // Annotations share the public read-only envelope. Never interpolate
-  #|   // file content into HTML/CSS selectors, or guess a missing source join.
+  #|   // All selection requests resolve back to this installed snapshot. Caller
+  #|   // supplied body/anchor fields are never trusted, even with a matching id.
   #|   let annotations = [];
   #|   try {
   #|     const data = host.querySelector('.office-annotations-metadata');
   #|     const envelope = data ? JSON.parse(data.textContent || '{}') : {};
   #|     if (envelope.schema === 'office.annotations.v1' && Array.isArray(envelope.items))
-  #|       annotations = envelope.items;
+  #|       annotations = envelope.items.filter(item => item && item.document &&
+  #|         item.document.file === documentFile && typeof item.document.sha256 === 'string');
   #|   } catch (_) {}
+  #|   const currentAnnotation = (request) => {
+  #|     const identity = request && request.document;
+  #|     if (!alive || !host.isConnected || !identity || typeof identity.file !== 'string' ||
+  #|         typeof identity.sha256 !== 'string') return null;
+  #|     const matches = annotations.filter(candidate => candidate.id === request.id &&
+  #|       candidate.document.file === identity.file && candidate.document.sha256 === identity.sha256);
+  #|     return matches.length === 1 ? matches[0] : null;
+  #|   };
+  #|   const availableBody = item => item && typeof item.text === 'string' && item.text_status === 'available';
+  #|   let selectedAnnotationId = null;
+  #|   const emitAnnotation = (item, start, end, scope) => {
+  #|     if (!currentAnnotation(item) || !availableBody(item) || !Number.isInteger(start) ||
+  #|         !Number.isInteger(end) || start < 0 || end < start || end > item.text.length) return false;
+  #|     const splitSurrogate = offset => offset > 0 && offset < item.text.length &&
+  #|       item.text.charCodeAt(offset - 1) >= 0xD800 && item.text.charCodeAt(offset - 1) <= 0xDBFF &&
+  #|       item.text.charCodeAt(offset) >= 0xDC00 && item.text.charCodeAt(offset) <= 0xDFFF;
+  #|     if (splitSurrogate(start) || splitSurrogate(end)) return false;
+  #|     selectedAnnotationId = item.id;
+  #|     for (const entry of host.querySelectorAll('.office-context-entry'))
+  #|       entry.classList.toggle('office-annotation-selected', entry.dataset.officeAnnotationId === item.id);
+  #|     onAnnotationSelection(JSON.stringify(item), start, end, scope);
+  #|     return true;
+  #|   };
+  #|   host.__officeSelectAnnotation = request => {
+  #|     const item = currentAnnotation(request);
+  #|     if (!item || !availableBody(item)) return false;
+  #|     // A later selectionchange for an old native Range must not replace
+  #|     // this explicit whole-body choice after the host renders its status.
+  #|     window.getSelection()?.removeAllRanges();
+  #|     return emitAnnotation(item, 0, item.text.length, 'whole');
+  #|   };
   #|   const annotationTargets = (item) => {
   #|     const anchor = item && item.anchor;
   #|     if (!anchor) return [];
@@ -419,52 +460,292 @@ extern "js" fn install_surface_interactions(
   #|     }
   #|     return [];
   #|   };
-  #|   for (const item of annotations) {
+  #|   const annotationById = id => {
+  #|     const matches = annotations.filter(item => item.id === id);
+  #|     return matches.length === 1 ? matches[0] : null;
+  #|   };
+  #|   const threadRoot = item => {
+  #|     const seen = new Set();
+  #|     let current = item;
+  #|     while (current && current.parent_id) {
+  #|       if (seen.has(current.id)) return item;
+  #|       seen.add(current.id);
+  #|       const parent = annotationById(current.parent_id);
+  #|       if (!parent || parent.document.sha256 !== item.document.sha256) break;
+  #|       current = parent;
+  #|     }
+  #|     return current || item;
+  #|   };
+  #|   const contextFor = item => {
+  #|     const own = annotationTargets(item);
+  #|     if (own.length) return { item, targets: own, inherited: false };
+  #|     const root = threadRoot(item);
+  #|     const targets = root !== item ? annotationTargets(root) : [];
+  #|     return { item: root, targets, inherited: targets.length > 0 };
+  #|   };
+  #|   const element = (tag, className, text) => {
+  #|     const node = document.createElement(tag);
+  #|     node.className = className;
+  #|     if (text !== undefined) node.textContent = text;
+  #|     return node;
+  #|   };
+  #|   const mapped = annotations.filter(item => annotationTargets(item).length > 0);
+  #|   let rail = null, card = null, activeContext = null;
+  #|   const markerGroups = [];
+  #|   const bodyItems = new WeakMap();
+  #|   const clearContext = () => {
+  #|     for (const node of host.querySelectorAll('.office-annotation-focus'))
+  #|       node.classList.remove('office-annotation-focus');
+  #|     if (card) card.remove();
+  #|     card = null;
+  #|     activeContext = null;
+  #|     for (const group of markerGroups) group.button.setAttribute('aria-expanded', 'false');
+  #|   };
+  #|   closeAnnotationContext = clearContext;
+  #|   const positionAnnotations = () => {
+  #|     if (!alive || !rail || !rail.isConnected) return;
+  #|     const railRect = rail.getBoundingClientRect();
+  #|     let previousMarkerTop = -28;
+  #|     const orderedGroups = [...markerGroups].sort((a, b) =>
+  #|       a.targets[0].getBoundingClientRect().top - b.targets[0].getBoundingClientRect().top);
+  #|     for (const group of orderedGroups) {
+  #|       const target = group.targets.find(node => node.isConnected &&
+  #|         !(node.closest('section') && node.closest('section').hidden));
+  #|       group.button.hidden = !target;
+  #|       if (!target) continue;
+  #|       if (kind === 'word') {
+  #|         const sourceTop = Math.max(0, target.getBoundingClientRect().top - railRect.top);
+  #|         const top = Math.max(sourceTop, previousMarkerTop + 28);
+  #|         group.button.style.top = `${top}px`;
+  #|         group.button.style.setProperty('--office-marker-offset', `${sourceTop - top}px`);
+  #|         previousMarkerTop = top;
+  #|       }
+  #|     }
+  #|     if (!card || !activeContext) return;
+  #|     const target = activeContext.targets.find(node => node.isConnected &&
+  #|       !(node.closest('section') && node.closest('section').hidden));
+  #|     if (!target) { clearContext(); return; }
+  #|     const viewport = host.closest('.surface-wrap') || host.parentElement || host;
+  #|     const viewportRect = viewport.getBoundingClientRect();
+  #|     const low = Math.max(0, viewportRect.top + 8 - railRect.top);
+  #|     const available = Math.max(120, Math.min(window.innerHeight, viewportRect.bottom) -
+  #|       Math.max(0, viewportRect.top) - 16);
+  #|     card.style.maxHeight = `${available}px`;
+  #|     const high = Math.max(low, Math.min(viewportRect.bottom, window.innerHeight) -
+  #|       railRect.top - Math.min(card.offsetHeight, available) - 8);
+  #|     card.style.top = `${Math.max(low, Math.min(high, target.getBoundingClientRect().top - railRect.top))}px`;
+  #|   };
+  #|   let layoutFrame = null;
+  #|   const scheduleAnnotationLayout = () => {
+  #|     if (!alive || layoutFrame !== null) return;
+  #|     layoutFrame = requestAnimationFrame(() => { layoutFrame = null; positionAnnotations(); });
+  #|   };
+  #|   host.__officeLayoutAnnotations = scheduleAnnotationLayout;
+  #|   const showAnnotation = (item, choices = [item], navigate = false) => {
+  #|     if (!currentAnnotation(item) || !rail) return false;
+  #|     const context = contextFor(item);
+  #|     if (!context.targets.length) return false;
+  #|     if (kind === 'excel' && host.dataset.officeActiveSheet !== context.item.anchor.sheet)
+  #|       setExcelSheet(context.item.anchor.sheet);
+  #|     clearContext();
+  #|     activeContext = context;
+  #|     for (const target of context.targets) target.classList.add('office-annotation-focus');
+  #|     const root = threadRoot(item);
+  #|     const roots = [];
+  #|     for (const choice of [root, ...choices.map(threadRoot)])
+  #|       if (!roots.includes(choice)) roots.push(choice);
+  #|     card = element('aside', 'office-context-card');
+  #|     card.setAttribute('aria-label', kind === 'word' ? 'Paragraph comments' : 'Cell Notes');
+  #|     const header = element('div', 'office-context-header');
+  #|     header.appendChild(element('strong', '', kind === 'word' ? 'Paragraph comments' : 'Cell Note'));
+  #|     const close = element('button', 'office-context-close', '×');
+  #|     close.type = 'button';
+  #|     close.setAttribute('aria-label', 'Close comment context');
+  #|     close.addEventListener('click', () => { if (header.isConnected) clearContext(); });
+  #|     header.appendChild(close);
+  #|     card.appendChild(header);
+  #|     card.appendChild(element('div', 'office-context-hint', kind === 'word'
+  #|       ? 'Paragraph context only. Exact commented text range is unavailable.'
+  #|       : `${context.item.anchor.sheet}!${context.item.anchor.cell}`));
+  #|     card.appendChild(element('div', 'office-context-hint',
+  #|       `Location belongs to ${context.item.id}.${context.inherited ? ' Reply is shown with inherited root context only.' : ''}`));
+  #|     if (roots.length > 1) {
+  #|       const chooser = element('select', 'office-context-chooser');
+  #|       chooser.setAttribute('aria-label', 'Choose comment thread');
+  #|       for (const candidate of roots) {
+  #|         const option = element('option', '', `${candidate.author || 'Unknown author'} · ${candidate.id}`);
+  #|         option.value = candidate.id;
+  #|         option.selected = candidate === root;
+  #|         chooser.appendChild(option);
+  #|       }
+  #|       chooser.addEventListener('change', () => {
+  #|         if (!chooser.isConnected) return;
+  #|         const chosen = annotationById(chooser.value);
+  #|         if (chosen) {
+  #|           const located = annotationTargets(chosen).length ? chosen :
+  #|             choices.find(candidate => threadRoot(candidate) === chosen) || chosen;
+  #|           showAnnotation(located, choices);
+  #|           host.__officeSelectAnnotation(chosen);
+  #|         }
+  #|       });
+  #|       card.appendChild(chooser);
+  #|     }
+  #|     const thread = [root, ...annotations.filter(candidate => candidate !== root && threadRoot(candidate) === root)];
+  #|     for (const entry of thread) {
+  #|       const row = element('section', 'office-context-entry' + (entry !== root ? ' office-context-reply' : ''));
+  #|       row.dataset.officeAnnotationId = entry.id;
+  #|       row.classList.toggle('office-annotation-selected', entry.id === selectedAnnotationId);
+  #|       row.appendChild(element('div', 'office-context-author', entry.author || 'Unknown author'));
+  #|       row.appendChild(element('div', 'office-context-meta', [entry.date || 'Date unknown',
+  #|         entry.resolved === true ? 'Resolved' : entry.resolved === false ? 'Open' : 'Resolution unknown'].join(' · ')));
+  #|       if (entry !== root) row.appendChild(element('div', 'office-context-hint',
+  #|         `Reply to ${entry.parent_id}. ${annotationTargets(entry).length ? 'Own source context recorded.' : 'Shown with linked root context; no own rendered location.'}`));
+  #|       const known = availableBody(entry);
+  #|       const body = element('div', 'office-annotation-body', known ? entry.text : 'Comment text unavailable.');
+  #|       body.dataset.officeAnnotationBody = entry.id;
+  #|       body.setAttribute('tabindex', known ? '0' : '-1');
+  #|       body.setAttribute('aria-label', `${entry !== root ? 'Reply' : 'Comment'} text by ${entry.author || 'Unknown author'}`);
+  #|       if (known && !entry.text.length) body.dataset.empty = 'true';
+  #|       if (known) bodyItems.set(body, entry);
+  #|       body.addEventListener('click', () => {
+  #|         if (!body.isConnected) return;
+  #|         const selection = window.getSelection();
+  #|         if (!selection || selection.isCollapsed) host.__officeSelectAnnotation(entry);
+  #|       });
+  #|       row.appendChild(body);
+  #|       const select = element('button', 'office-context-select', entry.type === 'xlsx.note' ? 'Select Note' : 'Select comment');
+  #|       select.type = 'button';
+  #|       select.disabled = !known;
+  #|       select.addEventListener('click', () => { if (select.isConnected) host.__officeSelectAnnotation(entry); });
+  #|       row.appendChild(select);
+  #|       card.appendChild(row);
+  #|     }
+  #|     rail.appendChild(card);
+  #|     for (const group of markerGroups)
+  #|       group.button.setAttribute('aria-expanded', group.items.some(entry => threadRoot(entry) === root) ? 'true' : 'false');
+  #|     if (navigate) context.targets[0].scrollIntoView({ block: 'center', inline: 'center' });
+  #|     positionAnnotations();
+  #|     scheduleAnnotationLayout();
+  #|     return true;
+  #|   };
+  #|   if (mapped.length) {
+  #|     const content = host.querySelector(kind === 'word' ? '.word-pages' : '.excel-workspace') ||
+  #|       (kind === 'word' ? host.querySelector('.word-page') : null);
+  #|     if (content) {
+  #|       const layout = element('div', `office-context-layout office-context-${kind}`);
+  #|       const documentColumn = element('div', 'office-context-document');
+  #|       rail = element('div', 'office-context-rail');
+  #|       rail.setAttribute('aria-label', 'Document comment margin');
+  #|       host.insertBefore(layout, content);
+  #|       layout.appendChild(documentColumn);
+  #|       documentColumn.appendChild(content);
+  #|       layout.appendChild(rail);
+  #|       rail.appendChild(element('div', 'office-context-instruction', 'Choose a comment marker to read or select its text.'));
+  #|       cleanups.push(() => { if (layout.parentNode === host) host.insertBefore(content, layout); layout.remove(); });
+  #|     }
+  #|   }
+  #|   for (const item of mapped) {
   #|     for (const node of annotationTargets(item)) {
   #|       node.classList.add('office-has-annotation');
   #|       const ids = JSON.parse(node.dataset.officeAnnotationIds || '[]');
-  #|       ids.push(item.id);
+  #|       if (!ids.includes(item.id)) ids.push(item.id);
   #|       node.dataset.officeAnnotationIds = JSON.stringify(ids);
-  #|       // A plain attribute is inert even when comment text contains markup.
-  #|       const label = `${item.author || 'Unknown author'}: ${item.text == null ? 'Text unavailable' : item.text}`;
-  #|       node.setAttribute('title', node.getAttribute('title') ? `${node.getAttribute('title')}\n${label}` : label);
+  #|       // Group Word fragments only within the same proven paragraph and page.
+  #|       const page = node.closest('.word-page');
+  #|       let group = markerGroups.find(group => kind === 'excel' ? group.targets[0] === node :
+  #|         group.page === page && group.part === node.dataset.sourcePart && group.path === node.dataset.sourcePath);
+  #|       if (!group) {
+  #|         const button = element('button', kind === 'excel' ? 'office-note-marker' : 'office-comment-marker');
+  #|         button.type = 'button';
+  #|         button.setAttribute('aria-expanded', 'false');
+  #|         group = { button, targets: [], items: [], page, part: node.dataset.sourcePart, path: node.dataset.sourcePath };
+  #|         markerGroups.push(group);
+  #|         if (kind === 'excel') node.appendChild(button);
+  #|         else if (rail) rail.appendChild(button);
+  #|         const linkedGroup = group;
+  #|         add(button, 'click', event => {
+  #|           event.preventDefault();
+  #|           event.stopPropagation();
+  #|           const selected = linkedGroup.items[0];
+  #|           if (showAnnotation(selected, linkedGroup.items)) host.__officeSelectAnnotation(selected);
+  #|         });
+  #|         cleanups.push(() => button.remove());
+  #|       }
+  #|       if (!group.targets.includes(node)) group.targets.push(node);
+  #|       if (!group.items.includes(item)) group.items.push(item);
+  #|       group.button.setAttribute('aria-label', `Open ${group.items.length} ${kind === 'excel' ? 'Note' : 'comment thread'}${group.items.length > 1 ? 's' : ''}`);
+  #|       group.button.setAttribute('title', kind === 'word' ? `Paragraph ${group.path}: show comments; exact text range unavailable` : 'Open cell Note');
   #|     }
   #|   }
-  #|   host.__officeFocusAnnotation = (request) => {
-  #|     const identity = request && request.document;
-  #|     const item = identity && typeof identity.file === 'string' &&
-  #|       typeof identity.sha256 === 'string' && annotations.find(candidate =>
-  #|         candidate.id === request.id && candidate.document &&
-  #|         candidate.document.file === identity.file &&
-  #|         candidate.document.sha256 === identity.sha256);
-  #|     for (const node of host.querySelectorAll('.office-annotation-focus'))
-  #|       node.classList.remove('office-annotation-focus');
-  #|     if (!item) return false;
-  #|     const targets = annotationTargets(item);
-  #|     if (targets.length === 0) return false;
-  #|     if (kind === 'excel') setExcelSheet(item.anchor.sheet);
-  #|     for (const node of targets) node.classList.add('office-annotation-focus');
-  #|     targets[0].scrollIntoView({block: 'center', inline: 'center'});
+  #|   host.__officeFocusAnnotation = request => {
+  #|     const item = currentAnnotation(request);
+  #|     return !!item && showAnnotation(item, [item], true);
+  #|   };
+  #|   // Native Range offsets are measured against the exact plain text node(s),
+  #|   // never Selection.toString(), which may normalize visible line endings.
+  #|   const annotationSelection = () => {
+  #|     if (!alive) return false;
+  #|     const selection = window.getSelection();
+  #|     if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return false;
+  #|     const range = selection.getRangeAt(0);
+  #|     const bodyFor = node => (node.nodeType === 1 ? node : node.parentElement)?.closest('[data-office-annotation-body]');
+  #|     const startBody = bodyFor(range.startContainer), endBody = bodyFor(range.endContainer);
+  #|     const intersectsCard = card && range.intersectsNode(card);
+  #|     if (!startBody || startBody !== endBody || !startBody.isConnected)
+  #|       return !!(startBody || endBody || intersectsCard);
+  #|     // Host-owned fallback bodies opt in with the same snapshot binding.
+  #|     // This lets off-preview comments be selected without guessing anchors.
+  #|     const item = host.contains(startBody) && bodyItems.has(startBody) ? bodyItems.get(startBody) :
+  #|       startBody.dataset.officeAnnotationSurface === id ? currentAnnotation({
+  #|         id: startBody.dataset.officeAnnotationBody,
+  #|         document: { file: startBody.dataset.officeAnnotationFile, sha256: startBody.dataset.officeAnnotationSha256 },
+  #|       }) : null;
+  #|     if (!item || !availableBody(item)) return true;
+  #|     const prefix = document.createRange();
+  #|     prefix.selectNodeContents(startBody);
+  #|     prefix.setEnd(range.startContainer, range.startOffset);
+  #|     const start = prefix.toString().length;
+  #|     prefix.setEnd(range.endContainer, range.endOffset);
+  #|     const end = prefix.toString().length;
+  #|     if (startBody.textContent !== item.text || end <= start) return true;
+  #|     emitAnnotation(item, start, end, 'text');
   #|     return true;
   #|   };
-  #|   cleanups.push(() => { delete host.__officeFocusAnnotation; });
-  #|   if (kind === "excel") {
-  #|     add(window, "resize", applyExcelObjectLayout);
-  #|     if (document.fonts && document.fonts.ready)
-  #|       document.fonts.ready.then(applyExcelObjectLayout).catch(() => {});
+  #|   add(window, 'keydown', event => { if (event.key === 'Escape' && card) { clearContext(); } });
+  #|   add(window, 'resize', scheduleAnnotationLayout);
+  #|   add(document, 'scroll', scheduleAnnotationLayout, true);
+  #|   if (typeof ResizeObserver !== 'undefined') {
+  #|     const observer = new ResizeObserver(scheduleAnnotationLayout);
+  #|     observer.observe(host);
+  #|     if (rail) observer.observe(rail);
+  #|     cleanups.push(() => observer.disconnect());
   #|   }
+  #|   if (document.fonts && document.fonts.ready)
+  #|     document.fonts.ready.then(() => { if (alive) { applyExcelObjectLayout(); scheduleAnnotationLayout(); } }).catch(() => {});
+  #|   if (kind === 'excel') add(window, 'resize', applyExcelObjectLayout);
+  #|   scheduleAnnotationLayout();
+  #|   cleanups.push(() => {
+  #|     if (layoutFrame !== null) cancelAnimationFrame(layoutFrame);
+  #|     clearContext();
+  #|     delete host.__officeFocusAnnotation;
+  #|     delete host.__officeSelectAnnotation;
+  #|     delete host.__officeLayoutAnnotations;
+  #|   });
   #|
   #|   // SVG text is selected with the browser's native Range. Reader-backed
   #|   // metadata is trusted only when its paragraph-relative span covers the
   #|   // complete emitted fragment; otherwise the anchor stays physical-only.
   #|   const wordSelection = () => {
+  #|     if (!alive || annotationSelection()) return;
   #|     const selection = window.getSelection();
-  #|     if (!selection || selection.rangeCount === 0) return;
+  #|     if (!selection || selection.rangeCount !== 1) return;
   #|     const text = selection.toString();
   #|     if (!text.trim()) return;
   #|     const range = selection.getRangeAt(0);
   #|     if (!nodeIsInside(host, range.startContainer) ||
   #|         !nodeIsInside(host, range.endContainer)) return;
+  #|     const pageFor = node => (node.nodeType === 1 ? node : node.parentElement)?.closest(".word-page");
+  #|     if (!pageFor(range.startContainer) || !pageFor(range.endContainer)) return;
   #|     const anchors = [];
   #|     const byKey = new Map();
   #|     const pages = new Set();
@@ -624,17 +905,21 @@ extern "js" fn install_surface_interactions(
   #|
   #|   let pointer = null;
   #|   const pointerDown = (event) => {
-  #|     if (event.button !== undefined && event.button !== 0) return;
+  #|     if (!alive || (event.button !== undefined && event.button !== 0)) return;
+  #|     if (event.target?.closest?.(".office-context-rail, .office-note-marker")) return;
   #|     if (kind === "excel") {
   #|       const cell = event.target && event.target.closest ? event.target.closest("td") : null;
   #|       if (!cell || !cell.dataset.cell) return;
+  #|       clearContext();
   #|       event.preventDefault();
   #|       pointer = { anchor: cell, active: cell, table: cell.closest("table") };
   #|       selectCells(cell, cell);
   #|       return;
   #|     }
-  #|     if (event.target && event.target.closest && event.target.closest(".word-page"))
+  #|     if (event.target && event.target.closest && event.target.closest(".word-page")) {
+  #|       clearContext();
   #|       pointer = { word: true };
+  #|     }
   #|   };
   #|   const pointerMove = (event) => {
   #|     if (!pointer || kind !== "excel") return;
@@ -642,16 +927,22 @@ extern "js" fn install_surface_interactions(
   #|     if (cell) pointer.active = cell;
   #|     selectCells(pointer.anchor, pointer.active);
   #|   };
-  #|   const pointerUp = () => { if (!pointer) return; if (kind === "excel") excelSelection(pointer); else wordSelection(); pointer = null; };
+  #|   const pointerUp = event => {
+  #|     if (!alive || !pointer) return;
+  #|     if (event.target?.closest?.('.office-context-rail, .office-note-marker')) { pointer = null; return; }
+  #|     if (kind === 'excel') excelSelection(pointer); else wordSelection();
+  #|     pointer = null;
+  #|   };
   #|   const pointerCancel = () => { if (pointer && kind === "excel") clearCells(pointer.table); pointer = null; };
-  #|   const selectionChanged = () => { if (kind === "word") wordSelection(); };
+  #|   cancelCellPointer = pointerCancel;
+  #|   const selectionChanged = () => { if (!annotationSelection() && kind === "word") wordSelection(); };
   #|   add(host, "pointerdown", pointerDown);
   #|   add(window, "pointermove", pointerMove);
   #|   add(window, "pointerup", pointerUp);
   #|   add(window, "pointercancel", pointerCancel);
   #|   add(document, "selectionchange", selectionChanged);
   #|   if (kind === "excel") add(host, "dragstart", (event) => event.preventDefault());
-  #|   host.__officeViewerCleanup = () => { for (const cleanup of cleanups) cleanup(); host.__officeViewerCleanup = null; };
+  #|   host.__officeViewerCleanup = () => { alive = false; pointer = null; for (const cleanup of cleanups) cleanup(); host.__officeViewerCleanup = null; };
   #| }
 
 ///|
@@ -672,5 +963,18 @@ extern "js" fn focus_surface_annotation(
   #|   const host = document.getElementById(id);
   #|   if (!host || !host.__officeFocusAnnotation) return false;
   #|   try { return host.__officeFocusAnnotation(JSON.parse(itemJson)); }
+  #|   catch (_) { return false; }
+  #| }
+
+///|
+#cfg(target="js")
+extern "js" fn select_surface_annotation(
+  surface_id : String,
+  item_json : String,
+) -> Bool =
+  #| (id, itemJson) => {
+  #|   const host = document.getElementById(id);
+  #|   if (!host || !host.__officeSelectAnnotation) return false;
+  #|   try { return host.__officeSelectAnnotation(JSON.parse(itemJson)); }
   #|   catch (_) { return false; }
   #| }

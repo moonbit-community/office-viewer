@@ -167,18 +167,38 @@ fn annotation_card(annotation : Json, emit : @rabbita.Emit[Msg]) -> Html {
       }
   }
   let text = match annotation_field(annotation, "text") {
-    Some(Json::String(text)) =>
-      if text == "" {
-        "(Empty comment)"
-      } else {
-        text
-      }
+    Some(Json::String(text)) => text
     _ =>
       if annotation_string(annotation, "text_status") == Some("ambiguous") {
         "Comment text unavailable (ambiguous source)."
       } else {
         "Comment text unavailable."
       }
+  }
+  let has_body = annotation_string(annotation, "text_status") ==
+    Some("available") &&
+    annotation_field(annotation, "text") is Some(Json::String(_))
+  let identity = annotation_field(annotation, "document").unwrap_or(
+    Json::null(),
+  )
+  let body_attrs = if has_body {
+    @html.Attrs::build()
+    .data_set(
+      "office-annotation-body",
+      annotation_string(annotation, "id").unwrap_or(""),
+    )
+    .data_set("office-annotation-surface", "document-surface")
+    .data_set(
+      "office-annotation-file",
+      annotation_string(identity, "file").unwrap_or(""),
+    )
+    .data_set(
+      "office-annotation-sha256",
+      annotation_string(identity, "sha256").unwrap_or(""),
+    )
+    .tabindex(0)
+  } else {
+    @html.Attrs::build()
   }
   let card_class = if parent is Some(_) {
     "annotation-card annotation-reply"
@@ -204,10 +224,20 @@ fn annotation_card(annotation : Json, emit : @rabbita.Emit[Msg]) -> Html {
         None => date
       },
     ),
-    div(class="annotation-text", text),
+    div(class="annotation-text", attrs=body_attrs, text),
     div(class="annotation-meta", "\{resolution} · \{parent_label}"),
     div(class="annotation-location", annotation_location(annotation)),
     div(class="annotation-hint", annotation_preview_label(annotation)),
+    button(
+      class="button annotation-select",
+      disabled=!has_body,
+      on_click=emit(SelectAnnotation(annotation)),
+      if annotation_string(annotation, "type") == Some("xlsx.note") {
+        "Select Note"
+      } else {
+        "Select comment"
+      },
+    ),
     button(
       class="button annotation-locate",
       title=if annotation_string(annotation, "type") == Some("docx.comment") {

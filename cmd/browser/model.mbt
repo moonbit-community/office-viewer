@@ -81,6 +81,8 @@ enum Msg {
   ToggleInspector
   ToggleComments
   FocusAnnotation(Json)
+  SelectAnnotation(Json)
+  AnnotationSelected(Bool)
   AnnotationFocused(Bool)
   CopyAnnotations
   AnnotationsCopied(Int, Bool)

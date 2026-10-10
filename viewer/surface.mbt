@@ -64,6 +64,15 @@ pub fn interactions_command(
         config.document_file,
         config.surface_html,
         selection => scheduler.add(on_selection(selection)),
+        (item_json, start, end, scope) => {
+          let item = @json.parse(item_json) catch { _ => return }
+          match
+            annotation_selection(item, start_utf16=start, end_utf16=end, scope~) {
+            Ok(selection) =>
+              scheduler.add(on_selection(selection.stringify(indent=2)))
+            Err(_) => ()
+          }
+        },
       )
     },
     kind=@cmd.after_render,
@@ -120,6 +129,30 @@ pub fn focus_annotation_command(
       let found = focus_surface_annotation(surface_id, annotation.stringify())
       match on_result {
         Some(callback) => scheduler.add(callback(found))
+        None => ()
+      }
+    },
+    kind=@cmd.after_render,
+  )
+}
+
+///|
+/// Select the complete available body of a current annotation. The runtime
+/// resolves id + file + SHA against the installed snapshot before reading its
+/// body. This also works for annotations with no rendered document location.
+pub fn select_annotation_command(
+  surface_id : String,
+  annotation : Json,
+  on_result? : (Bool) -> @rabbita.Cmd,
+) -> @rabbita.Cmd {
+  @cmd.custom_cmd(
+    scheduler => {
+      let selected = select_surface_annotation(
+        surface_id,
+        annotation.stringify(),
+      )
+      match on_result {
+        Some(callback) => scheduler.add(callback(selected))
         None => ()
       }
     },

@@ -151,7 +151,11 @@ fn update(
         {
           ..model,
           selection,
-          status: "Selection captured. It is ready to send to an Agent.",
+          status: if is_annotation_selection(selection) {
+            "Annotation text selected. It is ready to send to an Agent."
+          } else {
+            "Selection captured. It is ready to send to an Agent."
+          },
         },
         @rabbita.none,
       )
@@ -203,6 +207,25 @@ fn update(
         },
         @rabbita.none,
       )
+    SelectAnnotation(annotation) =>
+      (
+        model,
+        @viewer.select_annotation_command("document-surface", annotation, on_result=selected => {
+          emit(AnnotationSelected(selected))
+        }),
+      )
+    AnnotationSelected(selected) =>
+      if selected {
+        (model, @rabbita.none)
+      } else {
+        (
+          {
+            ..model,
+            status: "Comment text unavailable or no longer belongs to the open document.",
+          },
+          @rabbita.none,
+        )
+      }
     CopyAnnotations => {
       if model.kind is None || model.copying_annotations {
         return (model, @rabbita.none)

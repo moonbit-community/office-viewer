@@ -7,6 +7,8 @@ import {
 }
 
 // Values
+pub fn annotation_selection(Json, start_utf16? : Int, end_utf16? : Int, scope? : String) -> Result[Json, String]
+
 pub let default_selection_preview_utf16 : Int
 
 pub let default_selection_source_anchors : Int
@@ -32,6 +34,8 @@ pub fn read_annotations(String, String, Bytes) -> Result[Json, String]
 pub fn render_document(String, String, Bytes) -> Result[RenderedDocument, String]
 
 pub fn render_surface(SurfaceConfig) -> @html.Html
+
+pub fn select_annotation_command(String, Json, on_result? : (Bool) -> @cmd.Cmd) -> @cmd.Cmd
 
 pub fn visual_command(SurfaceConfig) -> @cmd.Cmd
 
