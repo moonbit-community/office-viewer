@@ -93,12 +93,13 @@ selector fields and make UTF-16 omission counts explicit; see
 [`docs/embedding.md`](docs/embedding.md).
 
 Existing DOCX comments/w15 replies and Excel traditional Notes are available
-in contextual cards and the read-only Comments panel, and through
+in a default-visible document gutter and the optional Comments overview, and through
 `@viewer.read_annotations` or
 `RenderedDocument.annotations`. The `office.annotations.v1` contract preserves
 missing metadata and explicit support limits. Word navigation shows only proven
 paragraph context; Notes beyond preview bounds remain in the list and JSON.
-Select a whole comment or highlight part of a contextual card to capture an
+Comment and reply bodies appear on file load without opening Comments or
+clicking a marker. Select a whole comment or highlight any body text to capture an
 `office.selection.v1` annotation-body selection, including source identity and
 UTF-16 offsets. Preview/deferred modes retain the reference without leaking the
 unselected body.

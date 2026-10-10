@@ -128,7 +128,14 @@ comments.” The envelope makes this limitation explicit even for an empty file.
 
 Call the existing `@viewer.interactions_command` after rendering the surface.
 It marks visible cells and mapped Word paragraph contexts, using the same JSON.
-Markers open one contextual comment card alongside the document. The page SVG
+Comment/reply bodies are rendered automatically in the document gutter on file
+load; markers only aid selection and source navigation. No Comments-panel or
+marker click is required to read or natively select the text. Multiple cards
+are stacked without covering the document. Unmapped Word comments, Notes on
+other sheets, and Notes outside the current view are automatically listed with
+explicit source-location labels. Very large files initially show 200 bodies,
+with an explicit count and a gutter control to show the next 200. On narrow
+screens the labeled cards flow below the document viewport. The page SVG
 and worksheet source content are unchanged. Word placement remains paragraph
 context, not an exact commented range. Linked replies shown with a parent's
 context are labeled as such; their original anchors are not modified.

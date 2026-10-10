@@ -224,6 +224,9 @@ extern "js" fn install_surface_interactions(
   #|       if (table) table.scrollLeft = 0;
   #|     }
   #|     applyExcelObjectLayout();
+  #|     const commentRail = host.querySelector(".office-context-rail");
+  #|     if (commentRail) commentRail.scrollTop = 0;
+  #|     if (host.__officeLayoutAnnotations) host.__officeLayoutAnnotations();
   #|   };
   #|
   #|   const enhanceExcelSurface = () => {
@@ -446,7 +449,7 @@ extern "js" fn install_surface_interactions(
   #|     window.getSelection()?.removeAllRanges();
   #|     return emitAnnotation(item, 0, item.text.length, 'whole');
   #|   };
-  #|   const annotationTargets = (item) => {
+  #|   const resolveAnnotationTargets = (item) => {
   #|     const anchor = item && item.anchor;
   #|     if (!anchor) return [];
   #|     if (kind === 'excel' && anchor.kind === 'xlsx') {
@@ -460,6 +463,8 @@ extern "js" fn install_surface_interactions(
   #|     }
   #|     return [];
   #|   };
+  #|   const targetsByItem = new Map(annotations.map(item => [item, resolveAnnotationTargets(item)]));
+  #|   const annotationTargets = item => targetsByItem.get(item) || [];
   #|   const annotationById = id => {
   #|     const matches = annotations.filter(item => item.id === id);
   #|     return matches.length === 1 ? matches[0] : null;
@@ -489,51 +494,80 @@ extern "js" fn install_surface_interactions(
   #|     if (text !== undefined) node.textContent = text;
   #|     return node;
   #|   };
+  #|   // Comment bodies are present on first render. Focus is only a source-location
+  #|   // aid; it never creates, hides or destroys the readable annotations.
   #|   const mapped = annotations.filter(item => annotationTargets(item).length > 0);
-  #|   let rail = null, card = null, activeContext = null;
-  #|   const markerGroups = [];
+  #|   let rail = null, placed = null, unplaced = null, unplacedHeading = null;
+  #|   let visibleCount = Math.min(200, annotations.length);
+  #|   const cards = [], markerGroups = [];
   #|   const bodyItems = new WeakMap();
   #|   const clearContext = () => {
-  #|     for (const node of host.querySelectorAll('.office-annotation-focus'))
-  #|       node.classList.remove('office-annotation-focus');
-  #|     if (card) card.remove();
-  #|     card = null;
-  #|     activeContext = null;
-  #|     for (const group of markerGroups) group.button.setAttribute('aria-expanded', 'false');
+  #|     for (const node of host.querySelectorAll('.office-annotation-focus, .office-context-active'))
+  #|       node.classList.remove('office-annotation-focus', 'office-context-active');
   #|   };
   #|   closeAnnotationContext = clearContext;
+  #|   const visibleTarget = targets => targets.find(node => {
+  #|     if (!node.isConnected || node.closest('section')?.hidden) return false;
+  #|     if (kind !== 'excel') return true;
+  #|     const viewport = node.closest('.office-excel-workbook');
+  #|     if (!viewport) return true;
+  #|     const r = node.getBoundingClientRect(), v = viewport.getBoundingClientRect();
+  #|     // Non-layout hosts can still inspect the source mapping; actual browsers
+  #|     // classify cells outside the scroll viewport as an explicit list fallback.
+  #|     return !v.width || !v.height || (r.bottom > v.top && r.top < v.bottom && r.right > v.left && r.left < v.right);
+  #|   });
+  #|   const sourceLabel = item => {
+  #|     const a = item.anchor || {};
+  #|     if (a.kind === 'xlsx') return `${a.sheet || 'Unknown sheet'}!${a.cell || 'Unknown cell'}`;
+  #|     const paths = (a.locations || []).map(location => location.path).filter(Boolean);
+  #|     return paths.length ? `Paragraph ${paths.join(', ')} · context only` : 'Unplaced Word comment';
+  #|   };
   #|   const positionAnnotations = () => {
   #|     if (!alive || !rail || !rail.isConnected) return;
-  #|     const railRect = rail.getBoundingClientRect();
+  #|     const origin = placed.getBoundingClientRect().top + rail.scrollTop;
+  #|     let bottom = 0, unplacedCount = 0;
+  #|     const ordered = cards.map(record => ({ record, target: visibleTarget(record.context.targets) }))
+  #|       .sort((a, b) => (a.target ? a.target.getBoundingClientRect().top : Infinity) -
+  #|         (b.target ? b.target.getBoundingClientRect().top : Infinity));
+  #|     for (const { record, target } of ordered) {
+  #|       const { card, root, context, hint } = record;
+  #|       const destination = target ? placed : unplaced;
+  #|       if (card.parentNode !== destination) destination.appendChild(card);
+  #|       card.classList.toggle('office-context-unplaced-card', !target);
+  #|       if (target) {
+  #|         const sourceTop = Math.max(0, target.getBoundingClientRect().top - origin);
+  #|         const top = Math.max(sourceTop, bottom);
+  #|         card.style.top = `${top}px`;
+  #|         card.dataset.sourceTop = String(sourceTop);
+  #|         card.style.setProperty('--office-card-offset', `${sourceTop - top}px`);
+  #|         bottom = top + (card.offsetHeight || card.getBoundingClientRect().height || 1) + 12;
+  #|         hint.textContent = `${sourceLabel(context.item)}${context.item !== root ? ` · Thread shown at ${context.item.id}'s source context.` : ''}`;
+  #|       } else {
+  #|         unplacedCount++;
+  #|         card.style.top = '';
+  #|         const a = context.item.anchor || {};
+  #|         const reason = kind !== 'excel' ? 'No reliable rendered paragraph anchor.' :
+  #|           a.sheet !== host.dataset.officeActiveSheet ? 'On another worksheet; body shown here now.' :
+  #|           a.preview === 'outside-preview' ? 'Outside the rendered preview.' : 'Cell not in the current view.';
+  #|         hint.textContent = `${sourceLabel(context.item)} · ${reason}`;
+  #|       }
+  #|     }
+  #|     placed.style.height = `${bottom}px`;
+  #|     unplacedHeading.hidden = unplacedCount === 0;
+  #|     unplacedHeading.textContent = kind === 'word' ? `Unplaced comments (${unplacedCount} threads)` :
+  #|       `Other locations (${unplacedCount} Notes) — bodies are shown below`;
   #|     let previousMarkerTop = -28;
-  #|     const orderedGroups = [...markerGroups].sort((a, b) =>
-  #|       a.targets[0].getBoundingClientRect().top - b.targets[0].getBoundingClientRect().top);
-  #|     for (const group of orderedGroups) {
-  #|       const target = group.targets.find(node => node.isConnected &&
-  #|         !(node.closest('section') && node.closest('section').hidden));
+  #|     for (const group of [...markerGroups].sort((a, b) => a.targets[0].getBoundingClientRect().top - b.targets[0].getBoundingClientRect().top)) {
+  #|       const target = visibleTarget(group.targets);
   #|       group.button.hidden = !target;
-  #|       if (!target) continue;
-  #|       if (kind === 'word') {
-  #|         const sourceTop = Math.max(0, target.getBoundingClientRect().top - railRect.top);
+  #|       if (target && kind === 'word') {
+  #|         const sourceTop = Math.max(0, target.getBoundingClientRect().top - rail.getBoundingClientRect().top);
   #|         const top = Math.max(sourceTop, previousMarkerTop + 28);
   #|         group.button.style.top = `${top}px`;
   #|         group.button.style.setProperty('--office-marker-offset', `${sourceTop - top}px`);
   #|         previousMarkerTop = top;
   #|       }
   #|     }
-  #|     if (!card || !activeContext) return;
-  #|     const target = activeContext.targets.find(node => node.isConnected &&
-  #|       !(node.closest('section') && node.closest('section').hidden));
-  #|     if (!target) { clearContext(); return; }
-  #|     const viewport = host.closest('.surface-wrap') || host.parentElement || host;
-  #|     const viewportRect = viewport.getBoundingClientRect();
-  #|     const low = Math.max(0, viewportRect.top + 8 - railRect.top);
-  #|     const available = Math.max(120, Math.min(window.innerHeight, viewportRect.bottom) -
-  #|       Math.max(0, viewportRect.top) - 16);
-  #|     card.style.maxHeight = `${available}px`;
-  #|     const high = Math.max(low, Math.min(viewportRect.bottom, window.innerHeight) -
-  #|       railRect.top - Math.min(card.offsetHeight, available) - 8);
-  #|     card.style.top = `${Math.max(low, Math.min(high, target.getBoundingClientRect().top - railRect.top))}px`;
   #|   };
   #|   let layoutFrame = null;
   #|   const scheduleAnnotationLayout = () => {
@@ -541,107 +575,108 @@ extern "js" fn install_surface_interactions(
   #|     layoutFrame = requestAnimationFrame(() => { layoutFrame = null; positionAnnotations(); });
   #|   };
   #|   host.__officeLayoutAnnotations = scheduleAnnotationLayout;
-  #|   const showAnnotation = (item, choices = [item], navigate = false) => {
+  #|   const showAnnotation = (item, _choices = [item], navigate = false) => {
   #|     if (!currentAnnotation(item) || !rail) return false;
   #|     const context = contextFor(item);
   #|     if (!context.targets.length) return false;
   #|     if (kind === 'excel' && host.dataset.officeActiveSheet !== context.item.anchor.sheet)
   #|       setExcelSheet(context.item.anchor.sheet);
   #|     clearContext();
-  #|     activeContext = context;
   #|     for (const target of context.targets) target.classList.add('office-annotation-focus');
-  #|     const root = threadRoot(item);
-  #|     const roots = [];
-  #|     for (const choice of [root, ...choices.map(threadRoot)])
-  #|       if (!roots.includes(choice)) roots.push(choice);
-  #|     card = element('aside', 'office-context-card');
-  #|     card.setAttribute('aria-label', kind === 'word' ? 'Paragraph comments' : 'Cell Notes');
-  #|     const header = element('div', 'office-context-header');
-  #|     header.appendChild(element('strong', '', kind === 'word' ? 'Paragraph comments' : 'Cell Note'));
-  #|     const close = element('button', 'office-context-close', '×');
-  #|     close.type = 'button';
-  #|     close.setAttribute('aria-label', 'Close comment context');
-  #|     close.addEventListener('click', () => { if (header.isConnected) clearContext(); });
-  #|     header.appendChild(close);
-  #|     card.appendChild(header);
-  #|     card.appendChild(element('div', 'office-context-hint', kind === 'word'
-  #|       ? 'Paragraph context only. Exact commented text range is unavailable.'
-  #|       : `${context.item.anchor.sheet}!${context.item.anchor.cell}`));
-  #|     card.appendChild(element('div', 'office-context-hint',
-  #|       `Location belongs to ${context.item.id}.${context.inherited ? ' Reply is shown with inherited root context only.' : ''}`));
-  #|     if (roots.length > 1) {
-  #|       const chooser = element('select', 'office-context-chooser');
-  #|       chooser.setAttribute('aria-label', 'Choose comment thread');
-  #|       for (const candidate of roots) {
-  #|         const option = element('option', '', `${candidate.author || 'Unknown author'} · ${candidate.id}`);
-  #|         option.value = candidate.id;
-  #|         option.selected = candidate === root;
-  #|         chooser.appendChild(option);
-  #|       }
-  #|       chooser.addEventListener('change', () => {
-  #|         if (!chooser.isConnected) return;
-  #|         const chosen = annotationById(chooser.value);
-  #|         if (chosen) {
-  #|           const located = annotationTargets(chosen).length ? chosen :
-  #|             choices.find(candidate => threadRoot(candidate) === chosen) || chosen;
-  #|           showAnnotation(located, choices);
-  #|           host.__officeSelectAnnotation(chosen);
-  #|         }
-  #|       });
-  #|       card.appendChild(chooser);
-  #|     }
-  #|     const thread = [root, ...annotations.filter(candidate => candidate !== root && threadRoot(candidate) === root)];
-  #|     for (const entry of thread) {
-  #|       const row = element('section', 'office-context-entry' + (entry !== root ? ' office-context-reply' : ''));
-  #|       row.dataset.officeAnnotationId = entry.id;
-  #|       row.classList.toggle('office-annotation-selected', entry.id === selectedAnnotationId);
-  #|       row.appendChild(element('div', 'office-context-author', entry.author || 'Unknown author'));
-  #|       row.appendChild(element('div', 'office-context-meta', [entry.date || 'Date unknown',
-  #|         entry.resolved === true ? 'Resolved' : entry.resolved === false ? 'Open' : 'Resolution unknown'].join(' · ')));
-  #|       if (entry !== root) row.appendChild(element('div', 'office-context-hint',
-  #|         `Reply to ${entry.parent_id}. ${annotationTargets(entry).length ? 'Own source context recorded.' : 'Shown with linked root context; no own rendered location.'}`));
-  #|       const known = availableBody(entry);
-  #|       const body = element('div', 'office-annotation-body', known ? entry.text : 'Comment text unavailable.');
-  #|       body.dataset.officeAnnotationBody = entry.id;
-  #|       body.setAttribute('tabindex', known ? '0' : '-1');
-  #|       body.setAttribute('aria-label', `${entry !== root ? 'Reply' : 'Comment'} text by ${entry.author || 'Unknown author'}`);
-  #|       if (known && !entry.text.length) body.dataset.empty = 'true';
-  #|       if (known) bodyItems.set(body, entry);
-  #|       body.addEventListener('click', () => {
-  #|         if (!body.isConnected) return;
-  #|         const selection = window.getSelection();
-  #|         if (!selection || selection.isCollapsed) host.__officeSelectAnnotation(entry);
-  #|       });
-  #|       row.appendChild(body);
-  #|       const select = element('button', 'office-context-select', entry.type === 'xlsx.note' ? 'Select Note' : 'Select comment');
-  #|       select.type = 'button';
-  #|       select.disabled = !known;
-  #|       select.addEventListener('click', () => { if (select.isConnected) host.__officeSelectAnnotation(entry); });
-  #|       row.appendChild(select);
-  #|       card.appendChild(row);
-  #|     }
-  #|     rail.appendChild(card);
-  #|     for (const group of markerGroups)
-  #|       group.button.setAttribute('aria-expanded', group.items.some(entry => threadRoot(entry) === root) ? 'true' : 'false');
+  #|     const record = cards.find(record => record.items.includes(item));
+  #|     if (record) record.card.classList.add('office-context-active');
   #|     if (navigate) context.targets[0].scrollIntoView({ block: 'center', inline: 'center' });
-  #|     positionAnnotations();
   #|     scheduleAnnotationLayout();
   #|     return true;
   #|   };
-  #|   if (mapped.length) {
+  #|   const renderAnnotationCards = () => {
+  #|     if (!rail) return;
+  #|     for (const record of cards) record.card.remove();
+  #|     cards.length = 0;
+  #|     rail.querySelector('.office-context-more')?.remove();
+  #|     const groups = new Map();
+  #|     for (const item of annotations.slice(0, visibleCount)) {
+  #|       const root = threadRoot(item);
+  #|       if (!groups.has(root)) groups.set(root, []);
+  #|       groups.get(root).push(item);
+  #|     }
+  #|     for (const [root, items] of groups) {
+  #|       items.sort((a, b) => (a === root ? -1 : b === root ? 1 : 0));
+  #|       // An anchored reply can supply visible thread context, explicitly labeled.
+  #|       // Its source anchor is never copied onto the root or another reply.
+  #|       const contextItem = annotationTargets(root).length ? root : items.find(item => annotationTargets(item).length) || root;
+  #|       const context = { item: contextItem, targets: annotationTargets(contextItem) };
+  #|       const card = element('aside', 'office-context-card');
+  #|       card.dataset.officeThreadId = root.id;
+  #|       card.setAttribute('aria-label', root.type === 'xlsx.note' ? 'Cell Note' : 'Comment thread');
+  #|       const header = element('div', 'office-context-header');
+  #|       header.appendChild(element('strong', '', root.type === 'xlsx.note' ? 'Note' : `Comment · ${root.id}`));
+  #|       const locate = element('button', 'office-context-select', 'Show source');
+  #|       locate.type = 'button';
+  #|       locate.disabled = context.targets.length === 0;
+  #|       locate.addEventListener('click', () => { if (card.isConnected) showAnnotation(contextItem, [contextItem], true); });
+  #|       header.appendChild(locate);
+  #|       card.appendChild(header);
+  #|       const hint = element('div', 'office-context-location', sourceLabel(contextItem));
+  #|       card.appendChild(hint);
+  #|       for (const entry of items) {
+  #|         const row = element('section', 'office-context-entry' + (entry !== root ? ' office-context-reply' : ''));
+  #|         row.dataset.officeAnnotationId = entry.id;
+  #|         row.classList.toggle('office-annotation-selected', entry.id === selectedAnnotationId);
+  #|         row.appendChild(element('div', 'office-context-author', entry.author || 'Unknown author'));
+  #|         row.appendChild(element('div', 'office-context-meta', [entry.date || 'Date unknown',
+  #|           entry.resolved === true ? 'Resolved' : entry.resolved === false ? 'Open' : 'Resolution unknown'].join(' · ')));
+  #|         if (entry !== root) row.appendChild(element('div', 'office-context-hint',
+  #|           `Reply to ${entry.parent_id}. ${annotationTargets(entry).length ? 'Own source context recorded.' : 'No own rendered location; grouped with this thread.'}`));
+  #|         const known = availableBody(entry);
+  #|         const body = element('div', 'office-annotation-body', known ? entry.text : 'Comment text unavailable.');
+  #|         body.dataset.officeAnnotationBody = entry.id;
+  #|         body.setAttribute('tabindex', known ? '0' : '-1');
+  #|         body.setAttribute('aria-label', `${entry !== root ? 'Reply' : 'Comment'} text by ${entry.author || 'Unknown author'}`);
+  #|         if (known && !entry.text.length) body.dataset.empty = 'true';
+  #|         if (known) bodyItems.set(body, entry);
+  #|         body.addEventListener('click', () => {
+  #|           if (!body.isConnected) return;
+  #|           const selection = window.getSelection();
+  #|           if (!selection || selection.isCollapsed) host.__officeSelectAnnotation(entry);
+  #|         });
+  #|         row.appendChild(body);
+  #|         const select = element('button', 'office-context-select', entry.type === 'xlsx.note' ? 'Select Note' : 'Select comment');
+  #|         select.type = 'button'; select.disabled = !known;
+  #|         select.addEventListener('click', () => { if (select.isConnected) host.__officeSelectAnnotation(entry); });
+  #|         row.appendChild(select);
+  #|         card.appendChild(row);
+  #|       }
+  #|       placed.appendChild(card);
+  #|       cards.push({ card, root, items, context, hint });
+  #|     }
+  #|     if (visibleCount < annotations.length) {
+  #|       const more = element('div', 'office-context-more');
+  #|       more.appendChild(element('p', '', `Showing ${visibleCount} of ${annotations.length} annotation bodies. Nothing is omitted from the structured data.`));
+  #|       const button = element('button', 'office-context-select', `Show ${Math.min(200, annotations.length - visibleCount)} more`);
+  #|       button.type = 'button';
+  #|       button.addEventListener('click', () => { visibleCount = Math.min(annotations.length, visibleCount + 200); renderAnnotationCards(); });
+  #|       more.appendChild(button); rail.appendChild(more);
+  #|     }
+  #|     positionAnnotations();
+  #|     scheduleAnnotationLayout();
+  #|   };
+  #|   if (annotations.length) {
   #|     const content = host.querySelector(kind === 'word' ? '.word-pages' : '.excel-workspace') ||
   #|       (kind === 'word' ? host.querySelector('.word-page') : null);
   #|     if (content) {
   #|       const layout = element('div', `office-context-layout office-context-${kind}`);
   #|       const documentColumn = element('div', 'office-context-document');
-  #|       rail = element('div', 'office-context-rail');
-  #|       rail.setAttribute('aria-label', 'Document comment margin');
+  #|       rail = element('div', 'office-context-rail office-default-annotations');
+  #|       rail.setAttribute('aria-label', 'Comments alongside the document');
   #|       host.insertBefore(layout, content);
-  #|       layout.appendChild(documentColumn);
-  #|       documentColumn.appendChild(content);
-  #|       layout.appendChild(rail);
-  #|       rail.appendChild(element('div', 'office-context-instruction', 'Choose a comment marker to read or select its text.'));
+  #|       layout.appendChild(documentColumn); documentColumn.appendChild(content); layout.appendChild(rail);
+  #|       rail.appendChild(element('div', 'office-context-heading', `${annotations.length} ${kind === 'word' ? 'comments and replies' : 'Notes'} · select text directly below`));
+  #|       placed = element('div', 'office-context-placed'); rail.appendChild(placed);
+  #|       unplacedHeading = element('div', 'office-context-unplaced-heading'); rail.appendChild(unplacedHeading);
+  #|       unplaced = element('div', 'office-context-unplaced'); rail.appendChild(unplaced);
   #|       cleanups.push(() => { if (layout.parentNode === host) host.insertBefore(content, layout); layout.remove(); });
+  #|       renderAnnotationCards();
   #|     }
   #|   }
   #|   for (const item of mapped) {
@@ -650,22 +685,18 @@ extern "js" fn install_surface_interactions(
   #|       const ids = JSON.parse(node.dataset.officeAnnotationIds || '[]');
   #|       if (!ids.includes(item.id)) ids.push(item.id);
   #|       node.dataset.officeAnnotationIds = JSON.stringify(ids);
-  #|       // Group Word fragments only within the same proven paragraph and page.
   #|       const page = node.closest('.word-page');
   #|       let group = markerGroups.find(group => kind === 'excel' ? group.targets[0] === node :
   #|         group.page === page && group.part === node.dataset.sourcePart && group.path === node.dataset.sourcePath);
   #|       if (!group) {
   #|         const button = element('button', kind === 'excel' ? 'office-note-marker' : 'office-comment-marker');
   #|         button.type = 'button';
-  #|         button.setAttribute('aria-expanded', 'false');
   #|         group = { button, targets: [], items: [], page, part: node.dataset.sourcePart, path: node.dataset.sourcePath };
   #|         markerGroups.push(group);
-  #|         if (kind === 'excel') node.appendChild(button);
-  #|         else if (rail) rail.appendChild(button);
+  #|         if (kind === 'excel') node.appendChild(button); else if (rail) rail.appendChild(button);
   #|         const linkedGroup = group;
   #|         add(button, 'click', event => {
-  #|           event.preventDefault();
-  #|           event.stopPropagation();
+  #|           event.preventDefault(); event.stopPropagation();
   #|           const selected = linkedGroup.items[0];
   #|           if (showAnnotation(selected, linkedGroup.items)) host.__officeSelectAnnotation(selected);
   #|         });
@@ -673,8 +704,8 @@ extern "js" fn install_surface_interactions(
   #|       }
   #|       if (!group.targets.includes(node)) group.targets.push(node);
   #|       if (!group.items.includes(item)) group.items.push(item);
-  #|       group.button.setAttribute('aria-label', `Open ${group.items.length} ${kind === 'excel' ? 'Note' : 'comment thread'}${group.items.length > 1 ? 's' : ''}`);
-  #|       group.button.setAttribute('title', kind === 'word' ? `Paragraph ${group.path}: show comments; exact text range unavailable` : 'Open cell Note');
+  #|       group.button.setAttribute('aria-label', `Select ${kind === 'excel' ? 'Note' : 'comment'} at ${kind === 'excel' ? node.dataset.cell : group.path}`);
+  #|       group.button.setAttribute('title', 'Comment bodies are already shown alongside the document');
   #|     }
   #|   }
   #|   host.__officeFocusAnnotation = request => {
@@ -690,7 +721,7 @@ extern "js" fn install_surface_interactions(
   #|     const range = selection.getRangeAt(0);
   #|     const bodyFor = node => (node.nodeType === 1 ? node : node.parentElement)?.closest('[data-office-annotation-body]');
   #|     const startBody = bodyFor(range.startContainer), endBody = bodyFor(range.endContainer);
-  #|     const intersectsCard = card && range.intersectsNode(card);
+  #|     const intersectsCard = cards.some(record => range.intersectsNode(record.card));
   #|     if (!startBody || startBody !== endBody || !startBody.isConnected)
   #|       return !!(startBody || endBody || intersectsCard);
   #|     // Host-owned fallback bodies opt in with the same snapshot binding.
@@ -711,9 +742,9 @@ extern "js" fn install_surface_interactions(
   #|     emitAnnotation(item, start, end, 'text');
   #|     return true;
   #|   };
-  #|   add(window, 'keydown', event => { if (event.key === 'Escape' && card) { clearContext(); } });
+  #|   add(window, 'keydown', event => { if (event.key === 'Escape') clearContext(); });
   #|   add(window, 'resize', scheduleAnnotationLayout);
-  #|   add(document, 'scroll', scheduleAnnotationLayout, true);
+  #|   add(document, 'scroll', event => { if (!rail || !rail.contains(event.target)) scheduleAnnotationLayout(); }, true);
   #|   if (typeof ResizeObserver !== 'undefined') {
   #|     const observer = new ResizeObserver(scheduleAnnotationLayout);
   #|     observer.observe(host);

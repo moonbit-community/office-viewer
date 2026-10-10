@@ -631,25 +631,28 @@ button, input { font: inherit; }
   .side-panel.open { position: absolute; right: 0; top: 90px; bottom: 0; z-index: 5; box-shadow: -4px 0 14px rgba(15, 23, 42, .12); }
 }
 
-/* Contextual annotations stay beside the fixed document surface. These
-   styles never modify SVG text metrics, page sizes, or worksheet cell text. */
-.office-viewer-surface .office-context-layout { display: flex; align-items: stretch; gap: 10px; position: relative; }
-.office-viewer-surface .office-context-word { min-width: max-content; }
+/* Comments are readable on first load, in reserved space beside the document.
+   Source page/cell content and font metrics are never changed by this gutter. */
+.office-viewer-surface .office-context-layout { display: flex; align-items: stretch; gap: 10px; position: relative; width: 100%; min-width: 0; }
 .office-viewer-surface .office-context-document { flex: 1 1 auto; min-width: 0; }
-.office-viewer-surface .office-context-word > .office-context-document { flex-shrink: 0; min-width: max-content; }
+.office-viewer-surface .office-context-word > .office-context-document { overflow-x: auto; }
 .office-viewer-surface .office-context-excel { height: 100%; min-height: 0; flex: 1 1 auto; gap: 0; }
 .office-viewer-surface .office-context-excel > .office-context-document { display: flex; flex-direction: column; min-height: 0; }
 .office-viewer-surface .office-context-rail { position: relative; flex: 0 0 326px; width: 326px; min-height: 180px; user-select: none; }
-.office-viewer-surface .office-context-excel > .office-context-rail { flex-basis: 292px; width: 292px; border-left: 1px solid #d9dfe8; background: #f3f5f8; }
-.office-viewer-surface .office-context-instruction { padding: 10px 10px 10px 40px; color: #64748b; font-size: 11px; line-height: 1.4; }
-.office-viewer-surface .office-context-rail:has(.office-context-card) > .office-context-instruction { visibility: hidden; }
-.office-viewer-surface .office-context-card { position: absolute; left: 36px; right: 0; z-index: 3; overflow: auto; padding: 12px; border: 1px solid #deb46b; border-radius: 8px; background: #fffdf7; box-shadow: 0 4px 14px #1f293719; color: #243044; text-align: left; }
-.office-viewer-surface .office-context-excel .office-context-card { left: 8px; right: 8px; }
+.office-viewer-surface .office-context-excel > .office-context-rail { overflow: auto; min-height: 0; border-left: 1px solid #d9dfe8; background: #f3f5f8; }
+.office-viewer-surface .office-context-heading { padding: 8px 10px 12px 36px; color: #475569; font-size: 12px; line-height: 1.45; font-weight: 650; }
+.office-viewer-surface .office-context-placed { position: relative; min-height: 0; }
+.office-viewer-surface .office-context-card { position: absolute; left: 36px; right: 4px; padding: 12px; border: 1px solid #deb46b; border-radius: 8px; background: #fffdf7; box-shadow: 0 3px 10px #1f293711; color: #243044; text-align: left; }
+.office-viewer-surface .office-context-card::before { content: ""; position: absolute; left: -8px; top: var(--office-card-offset, 0px); width: 7px; height: calc(0px - var(--office-card-offset, 0px)); border-top: 1px solid #c98b27; border-left: 1px solid #c98b27; pointer-events: none; }
+.office-viewer-surface .office-context-unplaced-card { position: relative; top: auto; left: auto; right: auto; margin: 0 4px 12px 36px; }
+.office-viewer-surface .office-context-unplaced-card::before { display: none; }
+.office-viewer-surface .office-context-unplaced-heading,
+.office-viewer-surface .office-context-more { margin: 6px 4px 12px 36px; color: #64748b; font-size: 11px; line-height: 1.45; }
+.office-viewer-surface .office-context-active { border-color: #b97718; box-shadow: 0 0 0 2px #f5d99d; }
 .office-viewer-surface .office-context-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
-.office-viewer-surface .office-context-close { border: 0; background: transparent; color: #64748b; cursor: pointer; font-size: 20px; padding: 0 3px; line-height: 1; }
+.office-viewer-surface .office-context-location { margin-top: 7px; color: #875313; font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
 .office-viewer-surface .office-context-hint,
 .office-viewer-surface .office-context-meta { margin-top: 5px; color: #64748b; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
-.office-viewer-surface .office-context-chooser { margin-top: 10px; width: 100%; min-height: 28px; border: 1px solid #d9dfe8; background: white; color: #334155; font-size: 11px; }
 .office-viewer-surface .office-context-entry { margin-top: 12px; padding-top: 10px; border-top: 1px solid #eadfc9; }
 .office-viewer-surface .office-context-reply { margin-left: 10px; padding-left: 10px; border-left: 2px solid #e3c58d; }
 .office-viewer-surface .office-context-author { font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
@@ -659,14 +662,29 @@ button, input { font: inherit; }
 .office-viewer-surface .office-context-select:disabled { opacity: .5; cursor: default; }
 .office-viewer-surface .office-comment-marker { position: absolute; left: 0; width: 28px; height: 26px; padding: 0; border: 1px solid #c98b27; border-radius: 6px; background: #fff0ce; color: #875313; cursor: pointer; }
 .office-viewer-surface .office-comment-marker::before { content: ""; display: block; width: 13px; height: 10px; margin: 0 auto; border: 2px solid currentColor; border-radius: 3px; }
-.office-viewer-surface .office-comment-marker[aria-expanded="true"] { background: #f5ce79; box-shadow: 0 0 0 2px #fce8b9; }
+.office-viewer-surface .office-comment-marker::after { content: ""; position: absolute; left: -9px; top: calc(12px + var(--office-marker-offset, 0px)); width: 7px; height: calc(0px - var(--office-marker-offset, 0px)); border-left: 1px solid #c98b27; border-top: 1px solid #c98b27; pointer-events: none; }
 .office-viewer-surface .office-note-marker { position: absolute; top: 0; right: 0; z-index: 3; width: 14px; height: 14px; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .office-viewer-surface .office-note-marker::before { content: ""; position: absolute; top: 0; right: 0; border-top: 10px solid #b45309; border-left: 10px solid transparent; }
 .office-viewer-surface .office-note-marker:focus-visible,
 .office-viewer-surface .office-comment-marker:focus-visible,
 .office-viewer-surface .office-annotation-body:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
 .comments-panel .annotation-select { margin-top: 8px; margin-right: 6px; min-height: 28px; font-size: 11px; }
-.office-viewer-surface .office-comment-marker::after { content: ""; position: absolute; left: -9px; top: calc(12px + var(--office-marker-offset, 0px)); width: 7px; height: calc(0px - var(--office-marker-offset, 0px)); border-left: 1px solid #c98b27; border-top: 1px solid #c98b27; pointer-events: none; }
 .comments-panel .annotation-text[data-office-annotation-body] { user-select: text; -webkit-user-select: text; cursor: text; }
 .comments-panel .annotation-text[data-office-annotation-body]:empty::before { content: "(Empty comment)"; color: #64748b; }
 .office-viewer-surface .office-context-entry.office-annotation-selected > .office-annotation-body { background: #fff0ce; box-shadow: 0 0 0 4px #fff0ce; border-radius: 2px; }
+
+@media (max-width: 760px) {
+  .surface-wrap.sheet-mode { overflow: auto; }
+  .surface.office-viewer-surface.sheet-mode { height: auto; }
+  .office-viewer-surface .office-context-layout { display: block; height: auto; }
+  .office-viewer-surface .office-context-document { max-height: 55vh; overflow: auto; }
+  .office-viewer-surface .office-context-excel > .office-context-document { height: 55vh; }
+  .office-viewer-surface .office-context-rail { width: 100%; min-height: 0; overflow: visible; margin-top: 12px; }
+  .office-viewer-surface .office-context-placed { height: auto !important; }
+  .office-viewer-surface .office-context-card { position: relative; top: auto !important; left: auto; right: auto; margin: 0 4px 12px; }
+  .office-viewer-surface .office-context-card::before,
+  .office-viewer-surface .office-comment-marker { display: none; }
+  .office-viewer-surface .office-context-heading,
+  .office-viewer-surface .office-context-unplaced-heading,
+  .office-viewer-surface .office-context-more { margin-left: 4px; padding-left: 0; }
+}
