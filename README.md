@@ -108,10 +108,12 @@ selector fields and make UTF-16 omission counts explicit; see
 [`docs/embedding.md`](docs/embedding.md).
 
 PDF selections use `office.pdf.text-range.v1` references rather than
-`office.mbt` selectors. References record the file path, SHA-256, parser
-version, text-item endpoints, and page geometry. Hosts can resolve them against
-the same file bytes using `resolve_pdf_selection`. The demo's Selection panel
-exposes Full, Preview, and Deferred output and PDF reference resolution. See
+`office.mbt` selectors. Agent materializations keep the selected text and a
+single reference with the file path, SHA-256, parser version, and text-item
+endpoints. Hosts can resolve that reference against the same file bytes using
+`resolve_pdf_selection`; the raw selection and resolver result retain detailed
+geometry and tagged metadata. The demo's Selection panel exposes Full, Preview,
+and Deferred output and PDF reference resolution. See
 [PDF preview](docs/pdf-preview.md) for the PDF contract and browser tests.
 
 Existing DOCX comments/w15 replies and Excel traditional Notes are available

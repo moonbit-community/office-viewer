@@ -255,25 +255,30 @@ three JSON APIs over the existing envelope:
 @viewer.materialize_selection_deferred(selection_json)
 ```
 
-Each returns `office.selection.materialized.v1` and keeps the original
-`office.selection.v1` shape under `selection` for the fields that are safe for
-the selected mode. The `content` object makes omission explicit. `full` keeps
-the exact selected text and original selection details. `preview` uses a
-deterministic UTF-16-bounded head/tail excerpt and does not invent a summary;
-the `[...]` marker is not counted as selected document text. `deferred` sets
-`selection.text` to `null` and carries compact reader references instead; the
-host can use the `file` and `selectors` to read the exact text later.
+Each returns `office.selection.materialized.v1` and keeps selected content under
+`selection`. The `content` object makes omission explicit. `full` keeps the exact
+selected text; `preview` uses a deterministic UTF-16-bounded head/tail excerpt
+and does not invent a summary; the `[...]` marker is not counted as selected
+document text. `deferred` sets `selection.text` to `null` and carries a source
+reference so the host can read the exact text later.
 
-For PDF, `source.selector_schema` is `null`, `source.selectors` is empty, and
-`source.reference_schema` is `office.pdf.text-range.v1`. The source includes
-`document`, the complete `reference`, `reference_complete`, and a resolver
-descriptor naming `resolve_pdf_selection`. The original range is not truncated
-when the compact anchor list exceeds its bound. `source.readable` is true only
-when a nonempty file path and structurally valid reference with matching document
-identity are present. Actual resolution additionally verifies the active bytes
-and PDF.js version and rejects invalid or out-of-bounds endpoints.
+PDF materializations deliberately use a compact projection. `selection` contains
+only `schema`, `format`, `kind`, and the mode's `text`. `source` contains
+`readable` and one complete `reference` with the file path, document identity,
+parser/extraction settings, and exact text endpoints. It does not repeat that
+reference or identity, and omits raw browser text, per-item anchors, geometry,
+tagged semantics, page metadata, and generic selector/structure counts. An
+invalid reference is omitted and `source.reason` explains why it cannot be
+resolved. The PDF item range is not truncated by the compact projection.
+`resolve_pdf_selection` accepts the materialized value and verifies the active
+bytes and PDF.js version before reading its text items again.
 
-Preview and deferred results intentionally omit large DOM rectangles, raw Word
+The original PDF selection callback and resolved PDF selection retain the
+detailed `anchors`, `pages`, and `page_info` data for applications that need
+geometry or tagged structure. Compact Agent materialization does not remove that
+data from the viewer's internal selection or resolver result.
+
+For DOCX/XLSX, preview and deferred results omit large DOM rectangles, raw Word
 anchor text, and Excel cell payloads from the projected selection. They retain
 counts and compact source fields (`selector`, `path`, `part`, UTF-16 spans,
 `runs`, `page`, `stability`, and reader judgment fields). The convenience APIs
@@ -281,11 +286,11 @@ return at most 64 compact source anchors and report `anchors_truncated`; callers
 that need another bound can use `materialize_selection` with
 `SelectionMaterializationOptions`.
 
-Compact PDF anchors retain item indices, page references, direction, font,
-marked-content ids, tagged semantics, and geometry. Preview/deferred omit raw
-selected anchor text and `browser_text`. `resolve_pdf_selection` accepts any
-of the three materialized forms and reconstructs full text by rereading PDF.js
-items. It returns whole-item geometry when no live DOM range is supplied.
+Detailed PDF anchors retain item indices, page references, direction, font,
+marked-content ids, tagged semantics, and geometry. `resolve_pdf_selection`
+accepts any of the three materialized forms and reconstructs full text by
+rereading PDF.js items. It returns whole-item geometry when no live DOM range
+is supplied.
 
 For Excel selections that do not have a top-level `text` field, the viewer
 derives exact content from the selected cells in row order, using tabs between

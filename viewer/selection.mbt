@@ -17,9 +17,9 @@ pub extend SelectionMaterializationMode with Eq::{equal, not_equal}
 
 ///|
 /// Options for `materialize_selection`. Preview limits are UTF-16 code units,
-/// matching browser ranges and office.mbt reader offsets. A source anchor is a
-/// compact reader-facing reference, so the default convenience APIs keep at
-/// most 64 of them in the result.
+/// matching browser ranges and office.mbt reader offsets. DOCX/XLSX source
+/// anchors are bounded; PDF materializations carry only their complete range
+/// reference and never emit per-item anchors.
 pub(all) struct SelectionMaterializationOptions {
   mode : SelectionMaterializationMode
   max_preview_utf16 : Int
@@ -488,7 +488,22 @@ fn projected_selection(
   mode : SelectionMaterializationMode,
   materialized_text : String?,
 ) -> Json {
-  if mode is Full {
+  if selection.format == "pdf" {
+    Json::object(
+      Map([
+        ("schema", Json::string("office.selection.v1")),
+        ("format", Json::string(selection.format)),
+        ("kind", Json::string(selection.kind)),
+        (
+          "text",
+          match materialized_text {
+            Some(value) => Json::string(value)
+            None => Json::null()
+          },
+        ),
+      ]),
+    )
+  } else if mode is Full {
     let fields = selection.fields.copy()
     if selection.kind == "annotation" {
       fields.set(
@@ -600,8 +615,9 @@ fn materialized_json(
   let omitted_utf16 = text_length - included_utf16
   let truncated = omitted_utf16 > 0
   let source_anchors : Array[Json] = []
-  let source_limit = if options.max_source_anchors >
-    selection.source_anchors.length() {
+  let source_limit = if selection.format == "pdf" {
+    0
+  } else if options.max_source_anchors > selection.source_anchors.length() {
     selection.source_anchors.length()
   } else {
     options.max_source_anchors
@@ -612,27 +628,42 @@ fn materialized_json(
       None => ()
     }
   }
-  let source_fields : Array[(String, Json)] = [
-    ("file", Json::string(selection.file)),
-    ("format", Json::string(selection.format)),
-    ("kind", Json::string(selection.kind)),
-    (
-      "selector_schema",
-      if selection.format == "pdf" || selection.kind == "annotation" {
-        Json::null()
-      } else {
-        Json::string("office.selector/1")
-      },
-    ),
-    ("selectors", json_string_array(selection.selectors)),
-    ("anchors", Json::array(source_anchors)),
-    ("anchor_count", json_number(selection.source_anchors.length())),
-    (
-      "anchors_truncated",
-      Json::boolean(source_limit < selection.source_anchors.length()),
-    ),
-    ("readable", Json::boolean(source_readable(selection))),
-  ]
+  let source_fields : Array[(String, Json)] = if selection.format == "pdf" {
+    let fields : Array[(String, Json)] = [
+      ("readable", Json::boolean(source_readable(selection))),
+    ]
+    match selection.pdf_reference {
+      Some(reference) => fields.push(("reference", reference))
+      None =>
+        match source_reason(selection) {
+          Some(reason) => fields.push(("reason", Json::string(reason)))
+          None => ()
+        }
+    }
+    fields
+  } else {
+    [
+      ("file", Json::string(selection.file)),
+      ("format", Json::string(selection.format)),
+      ("kind", Json::string(selection.kind)),
+      (
+        "selector_schema",
+        if selection.format == "pdf" || selection.kind == "annotation" {
+          Json::null()
+        } else {
+          Json::string("office.selector/1")
+        },
+      ),
+      ("selectors", json_string_array(selection.selectors)),
+      ("anchors", Json::array(source_anchors)),
+      ("anchor_count", json_number(selection.source_anchors.length())),
+      (
+        "anchors_truncated",
+        Json::boolean(source_limit < selection.source_anchors.length()),
+      ),
+      ("readable", Json::boolean(source_readable(selection))),
+    ]
+  }
   if selection.kind == "annotation" {
     source_fields.push(
       ("annotation_schema", Json::string("office.annotations.v1")),
@@ -657,37 +688,11 @@ fn materialized_json(
       ),
     )
   }
-  if selection.format == "pdf" {
-    source_fields.push(
-      ("reference_schema", Json::string("office.pdf.text-range.v1")),
-    )
-    source_fields.push(
-      ("reference_complete", Json::boolean(selection.pdf_reference is Some(_))),
-    )
-    match selection.pdf_reference {
-      Some(reference) => {
-        source_fields.push(("reference", reference))
-        source_fields.push(
-          (
-            "resolver",
-            Json::object({
-              "name": Json::string("pdfjs"),
-              "api": Json::string("resolve_pdf_selection"),
-              "scope": Json::string("active-document-or-reopen-identical-bytes"),
-            }),
-          ),
-        )
-      }
+  if selection.format != "pdf" {
+    match source_reason(selection) {
+      Some(reason) => source_fields.push(("reason", Json::string(reason)))
       None => ()
     }
-    match selection.fields.get("document") {
-      Some(document) => source_fields.push(("document", document))
-      None => ()
-    }
-  }
-  match source_reason(selection) {
-    Some(reason) => source_fields.push(("reason", Json::string(reason)))
-    None => ()
   }
   let structure_fields : Array[(String, Json)] = [
     ("anchor_count", json_number(selection.anchors.length())),
@@ -712,28 +717,29 @@ fn materialized_json(
     ("text_available", Json::boolean(materialized_text is Some(_))),
     ("representation", Json::string(representation)),
   ]
-  let output = Json::object(
-    Map([
-      ("schema", Json::string("office.selection.materialized.v1")),
-      (
-        "mode",
-        Json::string(
-          match options.mode {
-            Full => "full"
-            Preview => "preview"
-            Deferred => "deferred"
-          },
-        ),
+  let output_fields : Array[(String, Json)] = [
+    ("schema", Json::string("office.selection.materialized.v1")),
+    (
+      "mode",
+      Json::string(
+        match options.mode {
+          Full => "full"
+          Preview => "preview"
+          Deferred => "deferred"
+        },
       ),
-      (
-        "selection",
-        projected_selection(selection, options.mode, materialized_text),
-      ),
-      ("content", Json::object(Map(content_fields))),
-      ("structure", Json::object(Map(structure_fields))),
-      ("source", Json::object(Map(source_fields))),
-    ]),
-  )
+    ),
+    (
+      "selection",
+      projected_selection(selection, options.mode, materialized_text),
+    ),
+    ("content", Json::object(Map(content_fields))),
+    ("source", Json::object(Map(source_fields))),
+  ]
+  if selection.format != "pdf" {
+    output_fields.push(("structure", Json::object(Map(structure_fields))))
+  }
+  let output = Json::object(Map(output_fields))
   Ok(output.stringify(indent=2))
 }
 

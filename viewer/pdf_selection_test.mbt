@@ -79,40 +79,31 @@ test "PDF materialization keeps a native reference in all three modes" {
     let materialized = pdf_source(selection, mode)
     guard materialized
       is {
-        "source": {
-          "readable": True,
-          "reference_complete": True,
-          "selector_schema": Null,
-          "selectors": Array(selectors),
-          "reference": reference,
-          "anchors": Array(anchors),
-          ..
-        },
+        "source": { "readable": True, "reference": reference, .. },
         "selection": projected,
         ..
       } else {
       fail(materialized.stringify())
     }
-    assert_true(selectors.is_empty())
     assert_eq(pdf_object(selection)["reference"], reference)
-    assert_true(
-      anchors[0]
-      is {
-        "item_index": Number(2, ..),
-        "semantics": { "role_path": Array(_), .. },
-        "geometry": { "space": String("pdf-page-user-space"), .. },
-        ..
-      },
-    )
-    assert_true(
-      projected is { "page_info": Array(_), "document": Object(_), .. },
-    )
+    let materialized_fields = pdf_object(materialized)
+    let source_fields = pdf_object(materialized_fields["source"])
+    let projected_fields = pdf_object(projected)
+    assert_true(projected_fields.length() == 4)
+    assert_true(source_fields.length() == 2)
+    assert_false(source_fields.contains("file"))
+    assert_false(source_fields.contains("document"))
+    assert_false(source_fields.contains("anchors"))
+    assert_false(source_fields.contains("reference_schema"))
+    assert_false(materialized_fields.contains("structure"))
+    assert_false(projected_fields.contains("browser_text"))
+    assert_false(projected_fields.contains("document"))
+    assert_false(projected_fields.contains("anchors"))
+    assert_false(projected_fields.contains("page_info"))
+    assert_true(materialized.stringify().length() < 2200)
     match mode {
       @viewer.Full =>
-        assert_true(
-          projected
-          is { "text": String("abcdefghij"), "browser_text": String(_), .. },
-        )
+        assert_true(projected is { "text": String("abcdefghij"), .. })
       @viewer.Preview => {
         assert_true(projected is { "text": String("ab[...]ij"), .. })
         assert_false(materialized.stringify().contains("abcdefghij"))
@@ -126,7 +117,7 @@ test "PDF materialization keeps a native reference in all three modes" {
 }
 
 ///|
-test "PDF anchor truncation retains the complete cross-page range" {
+test "PDF materialization omits item anchors but retains its complete cross-page range" {
   let selection = pdf_fixture()
   let fields = pdf_object(selection)
   let anchor = pdf_object(selection)["anchors"]
@@ -137,10 +128,6 @@ test "PDF anchor truncation retains the complete cross-page range" {
     is {
       "source": {
         "readable": True,
-        "reference_complete": True,
-        "anchor_count": Number(100, ..),
-        "anchors_truncated": True,
-        "anchors": Array(compact),
         "reference": {
           "start": { "page": Number(1, ..), .. },
           "end": { "page": Number(2, ..), .. },
@@ -152,7 +139,9 @@ test "PDF anchor truncation retains the complete cross-page range" {
     } else {
     fail(result.stringify())
   }
-  assert_eq(compact.length(), 64)
+  let source = pdf_object(pdf_object(result)["source"])
+  assert_false(source.contains("anchors"))
+  assert_true(result.stringify().length() < 2200)
 }
 
 ///|
@@ -184,11 +173,12 @@ test "malformed PDF references fail closed without discarding selected text" {
     assert_true(
       result
       is {
-        "source": { "readable": False, "reference_complete": False, .. },
+        "source": { "readable": False, .. },
         "selection": { "text": String("abcdefghij"), .. },
         ..
       },
     )
+    assert_false(pdf_object(pdf_object(result)["source"]).contains("reference"))
   }
 }
 
@@ -218,10 +208,7 @@ test "PDF identities require a valid hash byte count and parser" {
     pdf_object(fields["reference"]).set("document", Json::object(identity))
     assert_true(
       pdf_source(selection, @viewer.Deferred)
-      is {
-        "source": { "readable": False, "reference_complete": False, .. },
-        ..
-      },
+      is { "source": { "readable": False, .. }, .. },
     )
   }
 }
@@ -236,20 +223,15 @@ test "PDF sources do not claim an office.mbt selector" {
   }
   pdf_object(anchors[0]).set("selector", Json::string("/docx/body/p[2]"))
   let result = pdf_source(selection, @viewer.Deferred)
-  guard result
-    is {
-      "source": {
-        "selector_schema": Null,
-        "selectors": Array(selectors),
-        "anchors": Array(compact),
-        ..
-      },
-      ..
-    } else {
-    fail(result.stringify())
-  }
-  assert_true(selectors.is_empty())
-  assert_false(pdf_object(compact[0]).contains("selector"))
+  let result_fields = pdf_object(result)
+  let source_fields = pdf_object(result_fields["source"])
+  let projected_fields = pdf_object(result_fields["selection"])
+  assert_true(source_fields.length() == 2)
+  assert_true(projected_fields.length() == 4)
+  assert_false(source_fields.contains("selector_schema"))
+  assert_false(source_fields.contains("selectors"))
+  assert_false(projected_fields.contains("selector"))
+  assert_false(projected_fields.contains("anchors"))
 }
 
 ///|

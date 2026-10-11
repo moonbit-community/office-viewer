@@ -289,7 +289,13 @@ async fn Browser::tests(
   self.check(
     "native mouse selection produces exact UTF-16 endpoints and tagged roles",
     (
-      #| (() => { const e=JSON.parse(document.querySelector('#selection-output').textContent); window.shortSelection=e; return e.selection.text==='Office Viewer' && getSelection().toString()==='Office Viewer' && e.source.readable && e.source.selector_schema===null && e.source.reference.start.offset_utf16===0 && e.source.reference.end.offset_utf16===13 && e.source.anchors[0].semantics.role_path.includes('H1') && e.source.anchors[0].geometry.precision==='selected-dom-range'; })()
+      #| (async () => { const h=document.querySelector('#document-surface'), e=JSON.parse(document.querySelector('#selection-output').textContent); window.shortSelection=e; const detail=await h.__officeViewerPdf.read(e.source.reference,getSelection().getRangeAt(0).cloneRange()); return e.selection.text==='Office Viewer' && getSelection().toString()==='Office Viewer' && e.source.readable && e.source.reference.start.offset_utf16===0 && e.source.reference.end.offset_utf16===13 && Object.keys(e.source).length===2 && Object.keys(e.selection).length===4 && !('anchors' in e.selection) && detail.anchors[0].semantics.role_path.includes('H1') && detail.anchors[0].geometry.precision==='selected-dom-range'; })()
+    ),
+  )
+  self.check(
+    "Agent PDF payload keeps selected text and one compact source reference",
+    (
+      #| (() => { const e=JSON.parse(document.querySelector('#selection-output').textContent), json=JSON.stringify(e); return json.length<2000 && e.selection.text==='Office Viewer' && Object.keys(e.selection).length===4 && Object.keys(e.source).length===2 && e.source.reference.schema==='office.pdf.text-range.v1' && (json.match(/"sha256"/g)||[]).length===1 && !json.includes('geometry') && !json.includes('browser_text') && !('structure' in e); })()
     ),
   )
   self.screenshot(output + "/desktop-selection.png")
@@ -298,10 +304,13 @@ async fn Browser::tests(
       "document.querySelector('.annotationLayer').style.visibility=''; document.querySelectorAll('.mode-option')[2].click(); true",
     ),
   )
+  self.wait_for(
+    "JSON.parse(document.querySelector('#selection-output').textContent).mode==='deferred'",
+  )
   self.check(
     "deferred output omits text and keeps a complete file reference",
     (
-      #| (() => { const e=JSON.parse(document.querySelector('#selection-output').textContent); return e.mode==='deferred' && e.selection.text===null && e.source.reference_complete && e.source.file==='/mock/office/sample.pdf' && e.source.document.sha256.length===64; })()
+      #| (() => { const e=JSON.parse(document.querySelector('#selection-output').textContent), r=e.source.reference; return e.mode==='deferred' && e.selection.text===null && e.source.readable && r.schema==='office.pdf.text-range.v1' && r.file==='/mock/office/sample.pdf' && r.document.sha256.length===64; })()
     ),
   )
   ignore(
@@ -343,13 +352,13 @@ async fn Browser::tests(
   self.check(
     "cross-page selection keeps the complete range beyond the anchor limit",
     (
-      #| (() => { const e=JSON.parse(document.querySelector('#selection-output').textContent); window.longSelection=e; return e.source.anchors_truncated && e.source.anchors.length===64 && e.source.anchor_count>64 && e.source.reference_complete && e.source.reference.start.page===1 && e.source.reference.end.page===2 && e.selection.pages.join(',')==='1,2'; })()
+      #| (() => { const e=JSON.parse(document.querySelector('#selection-output').textContent); window.longSelection=e; return !('anchors' in e.source) && !('pages' in e.selection) && e.source.reference.start.page===1 && e.source.reference.end.page===2 && e.content.text_utf16_length>3000; })()
     ),
   )
   self.check(
     "all three output modes can resolve the same full range",
     (
-      #| (async () => { const h=document.querySelector('#document-surface'), api=await h.__officeViewerPdfRuntime; let text=null; for(const i of [0,1,2]) { document.querySelectorAll('.mode-option')[i].click(); await new Promise(r=>setTimeout(r,30)); const e=JSON.parse(document.querySelector('#selection-output').textContent); if(i===0) text=e.selection.text; if(i===1 && (!e.content.truncated || e.content.included_utf16>1000)) return false; if(i===2 && e.selection.text!==null) return false; const full=JSON.parse(await api.resolveSelection(h.id,e)); if(full.text!==text || !text.includes('Row 80:') || full.anchors.length<=64 || !text.includes('\n\n')) return false; } return true; })()
+      #| (async () => { const h=document.querySelector('#document-surface'), api=await h.__officeViewerPdfRuntime; let text=null, reference=null; for(const i of [0,1,2]) { document.querySelectorAll('.mode-option')[i].click(); await new Promise(r=>setTimeout(r,30)); const e=JSON.parse(document.querySelector('#selection-output').textContent); if(i===0) { text=e.selection.text; reference=e.source.reference; } if(i===1 && (!e.content.truncated || e.content.included_utf16>1000)) return false; if(i===2 && e.selection.text!==null) return false; if(JSON.stringify(e.source.reference)!==JSON.stringify(reference) || JSON.stringify(e.selection).includes('geometry') || JSON.stringify(e.source).includes('anchors')) return false; const full=JSON.parse(await api.resolveSelection(h.id,e)); if(full.text!==text || !text.includes('Row 80:') || full.anchors.length<=64 || !text.includes('\n\n')) return false; } return true; })()
     ),
   )
   self.check(
@@ -386,7 +395,7 @@ async fn Browser::tests(
   )
   ignore(
     self.evaluate(
-      "(() => { window.beforeZoom=JSON.parse(document.querySelector('#selection-output').textContent).source.anchors[0].geometry.bbox; const zoomInput=document.querySelector('#zoom-input'); zoomInput.value='140'; zoomInput.dispatchEvent(new Event('input',{bubbles:true})); return true; })()",
+      "(async () => { const h=document.querySelector('#document-surface'), e=JSON.parse(document.querySelector('#selection-output').textContent); window.beforeZoom=(await h.__officeViewerPdf.read(e.source.reference,getSelection().getRangeAt(0).cloneRange())).anchors[0].geometry.bbox; const zoomInput=document.querySelector('#zoom-input'); zoomInput.value='140'; zoomInput.dispatchEvent(new Event('input',{bubbles:true})); return true; })()",
     ),
   )
   self.wait_for(
@@ -403,7 +412,7 @@ async fn Browser::tests(
   self.check(
     "PDF user coordinates stay stable when zoom changes",
     (
-      #| (() => { const a=JSON.parse(document.querySelector('#selection-output').textContent).source.anchors[0].geometry; return a.precision==='selected-dom-range' && a.bbox.every((v,i)=>Math.abs(v-beforeZoom[i])<1.5); })()
+      #| (async () => { const h=document.querySelector('#document-surface'), e=JSON.parse(document.querySelector('#selection-output').textContent), a=(await h.__officeViewerPdf.read(e.source.reference,getSelection().getRangeAt(0).cloneRange())).anchors[0].geometry; return a.precision==='selected-dom-range' && a.bbox.every((v,i)=>Math.abs(v-beforeZoom[i])<1.5); })()
     ),
   )
   ignore(
@@ -451,7 +460,7 @@ async fn Browser::tests(
   self.check(
     "rotated cropped pages preserve page user units and finite selection quads",
     (
-      #| (() => { const e=JSON.parse(document.querySelector('#selection-output').textContent), g=e.source.anchors[0].geometry, p=e.selection.page_info[0]; return p.intrinsic_rotation===90 && p.user_unit===2 && p.view_box.join(',')==='20,10,380,280' && g.space==='pdf-page-user-space' && g.user_unit===2 && g.precision==='selected-dom-range' && g.quads.flat(2).every(Number.isFinite) && g.bbox[0]>20 && g.bbox[2]<380; })()
+      #| (async () => { const h=document.querySelector('#document-surface'), e=JSON.parse(document.querySelector('#selection-output').textContent), detail=await h.__officeViewerPdf.read(e.source.reference,getSelection().getRangeAt(0).cloneRange()), g=detail.anchors[0].geometry, p=detail.page_info[0]; return p.intrinsic_rotation===90 && p.user_unit===2 && p.view_box.join(',')==='20,10,380,280' && g.space==='pdf-page-user-space' && g.user_unit===2 && g.precision==='selected-dom-range' && g.quads.flat(2).every(Number.isFinite) && g.bbox[0]>20 && g.bbox[2]<380; })()
     ),
   )
   self.screenshot(output + "/desktop-rotated.png")
@@ -513,7 +522,7 @@ async fn Browser::tests(
   )
   self.upload(filename)
   self.wait_for(
-    "document.querySelector('#document-surface')?.dataset.pdfPainted==='true'",
+    "document.querySelector('#document-surface')?.dataset.pdfPainted==='true' && document.querySelector('.status-selection').textContent==='Ready.' && document.querySelectorAll('.page').length===4",
   )
   self.check(
     "a malformed PDF does not prevent the next file from rendering", "document.querySelectorAll('.page').length===4 && document.querySelector('.status-selection').textContent==='Ready.'",
@@ -521,7 +530,7 @@ async fn Browser::tests(
   self.upload(@env.current_dir().unwrap() + "/" + output + "/invalid.pdf")
   self.upload(filename)
   self.wait_for(
-    "document.querySelector('#document-surface')?.dataset.pdfPainted==='true'",
+    "document.querySelector('#document-surface')?.dataset.pdfPainted==='true' && document.querySelector('.status-selection').textContent==='Ready.' && document.querySelectorAll('.page').length===4",
   )
   @async.sleep(200)
   self.check(
@@ -626,7 +635,7 @@ async fn Browser::reference_fixtures(
   self.check(
     "local CMaps preserve CJK text and exact deferred resolution",
     (
-      #| (async () => { const host=document.querySelector('#document-surface'), api=await host.__officeViewerPdfRuntime; const selection=JSON.parse(document.querySelector('#selection-output').textContent); const resolved=JSON.parse(await api.resolveSelection(host.id,selection)); return resolved.text==='日本語テスト' && selection.source.reference_complete && resolved.anchors[0].end_utf16===6; })()
+      #| (async () => { const host=document.querySelector('#document-surface'), api=await host.__officeViewerPdfRuntime; const selection=JSON.parse(document.querySelector('#selection-output').textContent); const resolved=JSON.parse(await api.resolveSelection(host.id,selection)); return resolved.text==='日本語テスト' && selection.source.reference.schema==='office.pdf.text-range.v1' && resolved.anchors[0].end_utf16===6; })()
     ),
   )
   self.screenshot(output + "/cjk.png")
@@ -649,7 +658,7 @@ async fn Browser::reference_fixtures(
   self.check(
     "embedded-font text joins the visual selection without guessed selectors",
     (
-      #| (async () => { const host=document.querySelector('#document-surface'), api=await host.__officeViewerPdfRuntime; const selection=JSON.parse(document.querySelector('#selection-output').textContent); const resolved=JSON.parse(await api.resolveSelection(host.id,selection)); return resolved.text===window.fixtureSelected && selection.source.selectors.length===0 && selection.source.reference_complete; })()
+      #| (async () => { const host=document.querySelector('#document-surface'), api=await host.__officeViewerPdfRuntime; const selection=JSON.parse(document.querySelector('#selection-output').textContent); const resolved=JSON.parse(await api.resolveSelection(host.id,selection)); return resolved.text===window.fixtureSelected && !('anchors' in selection.source) && selection.source.reference.schema==='office.pdf.text-range.v1'; })()
     ),
   )
   self.screenshot(output + "/embedded-fonts.png")
@@ -671,7 +680,7 @@ async fn Browser::reference_fixtures(
   self.check(
     "vertical text resolves with whole-item geometry covering the selected item",
     (
-      #| (async () => { const host=document.querySelector('#document-surface'), api=await host.__officeViewerPdfRuntime; const selection=JSON.parse(document.querySelector('#selection-output').textContent); const resolved=JSON.parse(await api.resolveSelection(host.id,selection)); const a=selection.source.anchors[0].geometry.bbox, b=resolved.anchors[0].geometry.bbox; const overlap=Math.max(0,Math.min(a[2],b[2])-Math.max(a[0],b[0]))*Math.max(0,Math.min(a[3],b[3])-Math.max(a[1],b[1])); return (resolved.text===window.fixtureSelected && resolved.anchors[0].dir==='ttb' && b.every(Number.isFinite) && overlap>0) || {selected:window.fixtureSelected, resolved:resolved.text, anchor:resolved.anchors[0], native:a, overlap}; })()
+      #| (async () => { const host=document.querySelector('#document-surface'), api=await host.__officeViewerPdfRuntime, selection=JSON.parse(document.querySelector('#selection-output').textContent); const resolved=JSON.parse(await api.resolveSelection(host.id,selection)), native=await host.__officeViewerPdf.read(selection.source.reference,getSelection().getRangeAt(0).cloneRange()); const a=native.anchors[0].geometry.bbox, b=resolved.anchors[0].geometry.bbox; const overlap=Math.max(0,Math.min(a[2],b[2])-Math.max(a[0],b[0]))*Math.max(0,Math.min(a[3],b[3])-Math.max(a[1],b[1])); return (resolved.text===window.fixtureSelected && resolved.anchors[0].dir==='ttb' && b.every(Number.isFinite) && overlap>0) || {selected:window.fixtureSelected, resolved:resolved.text, anchor:resolved.anchors[0], native:a, overlap}; })()
     ),
   )
   self.screenshot(output + "/vertical.png")

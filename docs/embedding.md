@@ -79,9 +79,14 @@ let deferred = @viewer.materialize_selection_deferred(selection_json)
 
 These return `office.selection.materialized.v1`. `full` retains exact text;
 `preview` contains a deterministic head/tail excerpt with UTF-16 omission counts;
-`deferred` omits selected text. Use `materialize_selection` with
-`SelectionMaterializationOptions` to configure the excerpt and compact-anchor
-bounds. Hosts must check `source.readable` before relying on a reference.
+`deferred` omits selected text. For PDF, all three modes project only the
+selected text and one complete PDF.js reference into the Agent payload. They
+omit repeated document identity, per-item font/geometry metadata, tagged
+semantics, and page details; the raw selection callback and resolver still
+provide those details when an application needs them. Use `materialize_selection`
+with `SelectionMaterializationOptions` to configure the excerpt and DOCX/XLSX
+compact-anchor bounds. PDF materializations always omit per-item anchors. Hosts
+must check `source.readable` before relying on a reference.
 
 The upstream `pagelayout/svg` backend has no OOXML source map. The viewer adds
 one only where its annotated-reader paragraph/run projection joins the rendered
@@ -113,9 +118,11 @@ same file bytes/hash and item ID; `source.readable` remains false for the existi
 `office.selector/1` document readback route. See the
 [annotation selection contract](selection-model.md#annotation-body-selections).
 
-DOCX/XLSX selections expose the existing file and `office.mbt` selectors. PDF
-selections expose `source.reference` using `office.pdf.text-range.v1` and no
-`office.mbt` selector. Resolve them with:
+DOCX/XLSX selections expose the existing file and `office.mbt` selectors. A
+materialized PDF selection keeps only `selection.schema`, `selection.format`,
+`selection.kind`, `selection.text`, and `source.readable` plus
+`source.reference` using `office.pdf.text-range.v1`; it has no `structure`
+block or `office.mbt` selector fields. Resolve it with:
 
 ```mbt
 let result = @viewer.resolve_pdf_selection(surface_id, materialized_json)
