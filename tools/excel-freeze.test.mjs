@@ -19,9 +19,10 @@ before(async () => {
 });
 after(async () => { await browser?.close(); });
 
-function sheet(name, { rows = 1, columns = 1, hidden = false } = {}) {
+function sheet(name, { rows = 1, columns = 1, hidden = false, objectLayout = false } = {}) {
   return `<section data-sheet="${name}" data-freeze-rows="${rows}" data-freeze-columns="${columns}"
-    class="${hidden ? '' : 'is-active'}" ${hidden ? 'hidden' : ''}>
+    class="${hidden ? '' : 'is-active'}" ${hidden ? 'hidden' : ''}
+    style="${objectLayout ? 'min-width:1500px;min-height:1600px' : ''}">
     <table><colgroup><col style="width:44px">${'<col style="width:110px">'.repeat(12)}</colgroup>
     <thead class="office-grid-column-headings"><tr><th class="office-grid-corner"></th>
       ${Array.from({ length: 12 }, (_, col) => `<th>${String.fromCharCode(65 + col)}</th>`).join('')}</tr></thead>
@@ -88,6 +89,20 @@ test('freezes rows and columns independently while ordinary cells move in both d
   near(after[4].y, before[4].y, 'corner y');
   near(after[5].x, before[5].x, 'row number x');
   assert.equal(await page.locator('.office-sheet-grid > .sheet-objects').count(), 2);
+});
+
+test('moves preexisting object-layout section bounds into the scrolling grid', async t => {
+  const page = await setup({ objectLayout: true });
+  t.after(() => page.close());
+  const section = page.locator('section[data-sheet="First"]');
+  assert.equal(await section.evaluate(node => node.style.minWidth), '');
+  assert.equal(await section.evaluate(node => node.style.minHeight), '');
+  assert.ok(await section.locator('.office-sheet-viewport').evaluate(node => node.clientWidth <= 600));
+  const frozen = await position(page, cell(1, 1));
+  const mobile = await position(page, cell(10, 6));
+  await scroll(page);
+  near((await position(page, cell(1, 1))).x, frozen.x, 'frozen column after object layout');
+  near((await position(page, cell(10, 6))).x, mobile.x - 180, 'ordinary column after object layout');
 });
 
 test('zoom recomputes offsets and keeps adjacent frozen rows and columns aligned', async t => {

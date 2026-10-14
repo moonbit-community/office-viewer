@@ -26,6 +26,10 @@ extern "js" fn install_excel_freeze(surface_id : String) =
   #|       const objects = section.querySelector(':scope > .sheet-objects');
   #|       if (objects) grid.appendChild(objects);
   #|     }
+  #|     // Object layout runs once before wrapping and sizes the section.
+  #|     // The grid now owns those dimensions so the viewport can scroll.
+  #|     section.style.removeProperty('min-width');
+  #|     section.style.removeProperty('min-height');
   #|     const count = name => {
   #|       const metadata = freezeSheets && Object.hasOwn(freezeSheets, section.dataset.sheet) ? freezeSheets[section.dataset.sheet] : null;
   #|       const value = Number(metadata ? metadata[name === 'freezeRows' ? 'rows' : 'columns'] : section.dataset[name]);
