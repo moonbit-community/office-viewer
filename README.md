@@ -23,47 +23,31 @@ unsupported formulas remain visibly marked as pending.
 
 ## Run locally
 
-The workspace uses pinned sibling checkouts. With this repository checked out as
-`office-viewer`, prepare the dependencies from its parent directory:
-
-```sh
-git clone https://github.com/moonbitlang/office.mbt.git
-git -C office.mbt checkout 59596ed5181382494ae5e5a151e2e954a8350001
-git clone https://github.com/moonbit-community/rabbita.git
-git -C rabbita checkout d31819b4b59653550af5fcd3c1bc5c424caae64a
-```
-
 Use the [official MoonBit toolchain](https://www.moonbitlang.com/download)
-`0.10.14+7d59c7ec9` (moon `0.1.20260920`) and Node.js 24. From `office-viewer`,
-resolve dependencies in this order; the Office workspace supplies the local XML
-package referenced by `moon.work`:
+`0.10.15+943464bfa` and Node.js 24. Dependencies resolve from the Mooncakes
+registry; sibling checkouts are not required.
 
 ```sh
-moon -C ../office.mbt update
-moon -C ../office.mbt check --target js ooxml/xml
-moon -C ../rabbita update
 moon update
 npm ci --ignore-scripts
 moon run tools/prepare-browser-assets.mbtx
 moon check --target js
-moon test --target js -p moonbit-community/office-viewer/viewer
-moon test --target js -p moonbit-community/office-viewer/cmd/browser
+moon test --target js
+npx --no-install playwright install chromium
+npm run test:browser
 ```
 
-Start the development server from `office-viewer`:
+Start the development server:
 
 ```sh
-moon -C ../rabbita run --target native warren -- \
+moonx --target native moonbit-community/warren@0.4.0 \
   -C "$PWD" dev --direct --browser-entry cmd/browser --server-entry "" --port 4311
 ```
 
-Open <http://127.0.0.1:4311/>. To build the same release artifact as CI, install
-Terser in a temporary directory and put it on `PATH`:
+Open <http://127.0.0.1:4311/>. Build the same release artifact as CI with:
 
 ```sh
-minifier="$(mktemp -d)"
-npm install --prefix "$minifier" --ignore-scripts --no-audit --no-fund terser@5.51.2
-PATH="$minifier/node_modules/.bin:$PATH" bash scripts/build-pages.sh
+npm run build:pages
 ```
 
 The generated `dist/` is ignored by Git; an optional first argument selects a
@@ -81,9 +65,9 @@ from `public/vendor/` into the release artifact.
 pull requests and every push to `main`. PRs never deploy. After a successful main
 build (or a manual run on `main`), it uploads the generated temporary artifact
 and deploys it with GitHub Pages. Build output is not committed to the repository.
-The workflow pins the two sibling revisions, the official compiler/core archives
-and their checksums, Terser, and npm browser dependencies. Update these pins together after compatibility
-checks. The deployed `build-info.json` identifies the exact source commit and
+The workflow pins the published Mooncakes dependencies, official compiler/core
+archives and their checksums, Warren, Terser, and npm browser dependencies.
+Update these pins together after compatibility checks. The deployed `build-info.json` identifies the exact source commit and
 asset contents. PDF.js and icon assets are generated before the source build;
 they are served locally from the deployed directory, including under subpaths.
 
@@ -128,7 +112,7 @@ clicking a marker. Select a whole comment or highlight any body text to capture 
 UTF-16 offsets. Preview/deferred modes retain the reference without leaking the
 unselected body.
 See [`docs/annotations-model.md`](docs/annotations-model.md) for the API,
-unsupported modern-comment formats, and compatible sibling checkout versions.
+unsupported modern-comment formats, and tested dependency versions.
 
 The reusable surface lives in [`viewer/`](viewer/). Its renderer and Rabbita
 surface are host-neutral: a standalone host can provide browser file bytes,
@@ -137,10 +121,20 @@ native backend. The intended OpenSeek integration mounts this same JS/Rabbita
 surface inside the desktop frontend; it does not open a second webpage or
 iframe.
 
-The layout engines still have documented OOXML gaps, including some nested
-tables, content controls, tab-stop cases, and paragraph-level section breaks.
-Those need to be surfaced as structured provenance before claiming complete
-Word compatibility.
+Word surfaces include a visible limitations banner and inert
+`office.render.diagnostics.v1` JSON when the layout reader reports unsupported
+content. Warning coverage depends on the installed `pagelayout` release; an
+empty warning list does not certify complete OOXML rendering. Floating drawings,
+nested tables, and paragraph-level section geometry still need engine work.
+
+Excel freezes authored rows/columns in a worksheet scroll area, including after
+zoom and worksheet switches. Split panes are not treated as frozen panes.
+Embedding hosts can set `render_document(..., max_rows=..., max_cols=...)`;
+the defaults are 1000 rows and 256 columns with a 262144-cell per-sheet ceiling.
+The table, formula metadata, and Notes preview flags use the same bounds.
+Notes outside the preview remain available in the annotation list.
+See [rendering support](docs/rendering-support.md) for version boundaries and
+known limitations.
 
 ## Font policy
 

@@ -24,6 +24,22 @@ and paragraph-relative UTF-16 spans. Uncertain joins retain physical anchors
 without guessed selectors. Excel emits canonical `office.selector/1` cell
 and range selectors derived from worksheet coordinates, including merged cells.
 
+## Rendering limits and frozen panes
+
+DOCX surfaces carry the layout reader's limitations banner and
+`office.render.diagnostics.v1` JSON. Preserve these elements when embedding.
+The JSON reports `complete: false`, counted `items` (`feature`, `count`), and a
+`truncated` flag when more than 64 distinct warnings exist. Absence of the
+script means no limitations were reported, not proof of complete compatibility.
+
+Excel surfaces contain inert `office-freeze-metadata` JSON with a `sheets` map
+of worksheet names to `{ rows, columns }`. `interactions_command` creates each
+worksheet's scroll area and installs sticky frozen cells; `visual_command`
+refreshes their geometry after zoom. Hosts must run both commands as described
+above. `render_document` defaults to `max_rows=1000`, `max_cols=256`; invalid or
+oversized windows return `Err`. These bounds also control formula metadata and
+Notes `within-preview`/`outside-preview` flags. See [rendering support](rendering-support.md).
+
 ## PDF
 
 PDF loading is asynchronous. `document_kind(name)` returns `Some(Pdf)` for a

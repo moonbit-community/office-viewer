@@ -15,6 +15,7 @@ import {
   "moonbitlang/mbtexcel/xlsx2html",
   "moonbitlang/pagelayout",
   "moonbitlang/pagelayout/docx",
+  "moonbitlang/pagelayout/paginate",
   "moonbitlang/pagelayout/svg",
 }
 

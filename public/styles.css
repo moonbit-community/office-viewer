@@ -405,7 +405,8 @@ button, input { font: inherit; }
   display: block;
 }
 
-.office-excel-workbook section[data-sheet] > table {
+.office-excel-workbook section[data-sheet] > table,
+.office-excel-workbook .office-sheet-grid > table {
   width: max-content;
   min-width: 0;
   margin: 0;

@@ -166,18 +166,12 @@ Reinstalling interactions restores the canonical surface HTML before deriving
 coordinates, so reopening the same file does not count generated grid headers
 as source rows or duplicate wrappers/markers.
 
-## Reproducible local workspace
+## Reproducible dependency build
 
-This implementation is tested with the existing sibling-checkout workspace,
-not with the older registry versions listed in the viewer's manifest:
-
-- office-viewer base: `12be91f`
-- office.mbt: `59596ed5181382494ae5e5a151e2e954a8350001`
-  (`docx2html 0.6.1`, `mbtexcel 0.2.1`, `pagelayout 0.7.1`)
-- Rabbita: `rabbita-v0.16.3` / `d31819b4b59653550af5fcd3c1bc5c424caae64a`
-
-Keep those checkouts beside the viewer. Bootstrap office.mbt dependencies so
-the existing `../office.mbt/.mooncakes/Milky2018/xml` workspace member exists,
-then run `moon check --target js`, `moon test --target js`, and
-`moon build --target js` in this repository. Published dependency-only builds
-are not established by this change; no broad manifest upgrade is bundled here.
+The annotation APIs are tested with published `docx2html 0.7.0`,
+`mbtexcel 0.3.0`, `pagelayout 0.8.0`, and Rabbita `0.16.3` from the
+viewer manifest. Sibling checkouts are not required. Use MoonBit
+`0.10.15+943464bfa`, run `moon update`, then `moon check --target js`,
+`moon test --target js`, and `moon build --target js` in this repository.
+See [the README](../README.md#run-locally) for browser dependencies and
+[rendering support](rendering-support.md) for upstream fixes awaiting release.

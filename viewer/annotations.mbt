@@ -295,6 +295,8 @@ fn excel_annotations(
   name : String,
   file : String,
   workbook : @xlsx.Workbook,
+  max_rows~ : Int32 = 1000,
+  max_cols~ : Int32 = 256,
 ) -> Json raise {
   let items : Array[Json] = []
   for sheet_index, sheet in workbook.get_sheet_list() {
@@ -327,7 +329,7 @@ fn excel_annotations(
             "column": json_number(column),
             "confidence": Json::string("exact-cell"),
             "preview": Json::string(
-              if row <= 1000 && column <= 256 {
+              if row <= max_rows && column <= max_cols {
                 "within-preview"
               } else {
                 "outside-preview"
@@ -349,8 +351,8 @@ fn excel_annotations(
       "traditional_notes": Json::string("supported"),
       "threaded_comments": Json::string("unsupported"),
       "threaded_comments_presence": Json::string("unknown"),
-      "preview_max_rows": json_number(1000),
-      "preview_max_columns": json_number(256),
+      "preview_max_rows": json_number(max_rows),
+      "preview_max_columns": json_number(max_cols),
     }),
     [
       "Only traditional Excel Notes are read. Modern threaded comments are unsupported and their presence is not detected. An empty Notes list does not prove the workbook has no comments.",
@@ -396,6 +398,6 @@ pub fn read_annotations(
 // Safe inside the renderer's inert application/json data block.
 fn annotations_script(annotations : Json) -> String {
   "<script type=\"application/json\" class=\"office-annotations-metadata\">" +
-  annotations.stringify().replace(old="<", new="\\u003c") +
+  annotations.stringify().split("<").join("\\u003c") +
   "</script>"
 }
