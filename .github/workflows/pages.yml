@@ -62,6 +62,8 @@ jobs:
         run: |
           npx --no-install playwright install --with-deps chromium
           npm run test:browser
+      - name: Install pinned Warren builder
+        run: moon install moonbit-community/warren@0.4.5 --bin "$MOON_HOME/bin"
       - name: Build Pages artifact from source
         run: |
           moon run tools/prepare-browser-assets.mbtx

@@ -40,11 +40,12 @@ npm run test:browser
 Start the development server:
 
 ```sh
-moonx --target native moonbit-community/warren@0.4.0 \
+moon install moonbit-community/warren@0.4.5
+warren \
   -C "$PWD" dev --direct --browser-entry cmd/browser --server-entry "" --port 4311
 ```
 
-Open <http://127.0.0.1:4311/>. Build the same release artifact as CI with:
+Open <http://127.0.0.1:4311/>. With Warren installed as above, build the same release artifact as CI with:
 
 ```sh
 npm run build:pages
@@ -66,7 +67,7 @@ pull requests and every push to `main`. PRs never deploy. After a successful mai
 build (or a manual run on `main`), it uploads the generated temporary artifact
 and deploys it with GitHub Pages. Build output is not committed to the repository.
 The workflow pins the published Mooncakes dependencies, official compiler/core
-archives and their checksums, Warren, Terser, and npm browser dependencies.
+archives and their checksums, Warren (with its bundled minifier), and npm browser dependencies.
 Update these pins together after compatibility checks. The deployed `build-info.json` identifies the exact source commit and
 asset contents. PDF.js and icon assets are generated before the source build;
 they are served locally from the deployed directory, including under subpaths.

@@ -7,8 +7,7 @@
     "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
-    "playwright": "1.60.0",
-    "terser": "5.51.2"
+    "playwright": "1.60.0"
   },
   "scripts": {
     "test:browser": "node --test tools/excel-freeze.test.mjs",
