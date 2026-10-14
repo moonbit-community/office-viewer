@@ -3,7 +3,15 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "pdfjs-dist": "6.4.299",
-    "lucide-static": "0.577.0"
+    "lucide-static": "0.577.0",
+    "pdfjs-dist": "6.4.299"
+  },
+  "devDependencies": {
+    "playwright": "1.60.0",
+    "terser": "5.51.2"
+  },
+  "scripts": {
+    "test:browser": "node --test tools/excel-freeze.test.mjs",
+    "build:pages": "bash scripts/build-pages.sh"
   }
 }

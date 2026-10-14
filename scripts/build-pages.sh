@@ -2,10 +2,10 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-dist="$(realpath -m "${1:-$root/dist}")"
+dist="$(node -e 'process.stdout.write(require("node:path").resolve(process.argv[1]))' "${1:-$root/dist}")"
 # Avoid Warren's unpinned npm-exec fallback.
 command -v terser >/dev/null || { echo 'Install terser@5.51.2 and add it to PATH.' >&2; exit 1; }
-moon -C "$root/../rabbita" run --target native warren -- \
+moonx --target native moonbit-community/warren@0.4.0 \
   -C "$root" build --browser-entry cmd/browser --server-entry "" --dist "$dist"
 
 # Content-addressed assets prevent a cached HTML/JS/CSS version mismatch.
