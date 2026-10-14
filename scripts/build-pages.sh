@@ -2,10 +2,10 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-dist="$(realpath -m "${1:-$root/dist}")"
-# Avoid Warren's unpinned npm-exec fallback.
-command -v terser >/dev/null || { echo 'Install terser@5.51.2 and add it to PATH.' >&2; exit 1; }
-moon -C "$root/../rabbita" run --target native warren -- \
+dist="$(node -e 'process.stdout.write(require("node:path").resolve(process.argv[1]))' "${1:-$root/dist}")"
+# Warren 0.4.5 includes its minifier; no npm-exec fallback is needed.
+command -v warren >/dev/null || { echo 'Install moonbit-community/warren@0.4.5 with moon install.' >&2; exit 1; }
+warren \
   -C "$root" build --browser-entry cmd/browser --server-entry "" --dist "$dist"
 
 # Content-addressed assets prevent a cached HTML/JS/CSS version mismatch.

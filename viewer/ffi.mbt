@@ -73,7 +73,7 @@ extern "js" fn install_surface_interactions(
   document_file : String,
   surface_html : String,
   on_selection : (String) -> Unit,
-  on_annotation_selection : (String, Int, Int, String) -> Unit,
+  on_annotation_selection : (String, Int32, Int32, String) -> Unit,
 ) =
   #| (id, kind, documentFile, surfaceHtml, onSelection, onAnnotationSelection) => {
   #|   const host = document.getElementById(id);
@@ -125,11 +125,12 @@ extern "js" fn install_surface_interactions(
   #|       const objects = Array.isArray(metadata.sheets[sheet])
   #|         ? metadata.sheets[sheet] : [];
   #|       const table = section.querySelector("table");
-  #|       const overlay = section.querySelector(":scope > .sheet-objects");
+  #|       const grid = section.querySelector('.office-sheet-grid') || section;
+  #|       const overlay = grid.querySelector(":scope > .sheet-objects");
   #|       if (!table || !overlay) continue;
   #|       section.classList.add("office-anchored-objects");
   #|       overlay.classList.add("office-object-overlay");
-  #|       const sectionRect = section.getBoundingClientRect();
+  #|       const sectionRect = grid.getBoundingClientRect();
   #|       const cells = Array.from(section.querySelectorAll("td[data-cell]"));
   #|       const figures = Array.from(overlay.querySelectorAll(
   #|         "figure.image, figure.chart, figure.chart-placeholder",
@@ -175,11 +176,12 @@ extern "js" fn install_surface_interactions(
   #|         maxRight = Math.max(maxRight, left + width);
   #|         maxBottom = Math.max(maxBottom, top + height);
   #|       });
-  #|       section.style.minWidth = `${Math.ceil(maxRight)}px`;
-  #|       section.style.minHeight = `${Math.ceil(maxBottom)}px`;
+  #|       grid.style.minWidth = `${Math.ceil(maxRight)}px`;
+  #|       grid.style.minHeight = `${Math.ceil(maxBottom)}px`;
   #|     }
   #|   };
   #|
+  #|   host.__officeLayoutObjects = applyExcelObjectLayout;
   #|   const updateExcelFormulaBar = (cell, range) => {
   #|     if (kind !== "excel") return;
   #|     const nameBox = host.querySelector("[data-excel-name]");
@@ -224,6 +226,7 @@ extern "js" fn install_surface_interactions(
   #|       if (table) table.scrollLeft = 0;
   #|     }
   #|     applyExcelObjectLayout();
+  #|     host.__officeFreezeLayout?.();
   #|     const commentRail = host.querySelector(".office-context-rail");
   #|     if (commentRail) commentRail.scrollTop = 0;
   #|     if (host.__officeLayoutAnnotations) host.__officeLayoutAnnotations();
@@ -509,7 +512,7 @@ extern "js" fn install_surface_interactions(
   #|   const visibleTarget = targets => targets.find(node => {
   #|     if (!node.isConnected || node.closest('section')?.hidden) return false;
   #|     if (kind !== 'excel') return true;
-  #|     const viewport = node.closest('.office-excel-workbook');
+  #|     const viewport = node.closest('.office-sheet-viewport') || node.closest('.office-excel-workbook');
   #|     if (!viewport) return true;
   #|     const r = node.getBoundingClientRect(), v = viewport.getBoundingClientRect();
   #|     // Non-layout hosts can still inspect the source mapping; actual browsers

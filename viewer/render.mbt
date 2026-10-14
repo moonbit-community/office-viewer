@@ -17,7 +17,7 @@ pub(all) struct RenderedDocument {
   name : String
   file : String
   surface_html : String
-  item_count : Int
+  item_count : Int32
   warning : String
   annotations : Json
 } derive(Eq)
@@ -58,19 +58,51 @@ fn extract_html_body(document : String) -> String {
 /// Keep formulas alongside the rendered result so the browser formula bar can
 /// show the source expression without changing the HTML emitted by
 /// `mbtexcel/xlsx2html`.
-fn excel_formula_metadata(workbook : @xlsx.Workbook) -> String raise {
+fn excel_freeze_metadata(workbook : @xlsx.Workbook) -> String raise {
+  let sheets : Map[String, Json] = Map([])
+  for name in workbook.get_sheet_list() {
+    let panes = workbook.get_panes(name)
+    sheets[name] = Json::object({
+      "rows": json_number(
+        if panes.freeze && panes.y_split > 0 {
+          panes.y_split
+        } else {
+          0
+        },
+      ),
+      "columns": json_number(
+        if panes.freeze && panes.x_split > 0 {
+          panes.x_split
+        } else {
+          0
+        },
+      ),
+    })
+  }
+  Json::object({ "sheets": Json::object(sheets) })
+  .stringify()
+  .split("<")
+  .join("\\u003c")
+}
+
+///|
+fn excel_formula_metadata(
+  workbook : @xlsx.Workbook,
+  max_rows : Int32,
+  max_cols : Int32,
+) -> String raise {
   let sheets : Array[(String, Json)] = []
   for name in workbook.get_sheet_list() {
     let formulas : Map[String, Json] = Map([])
     match workbook.sheet(name) {
       Some(worksheet) => {
-        let max_row = if worksheet.max_row() > 1000 {
-          1000
+        let max_row = if worksheet.max_row() > max_rows {
+          max_rows
         } else {
           worksheet.max_row()
         }
-        let max_col = if worksheet.max_col() > 256 {
-          256
+        let max_col = if worksheet.max_col() > max_cols {
+          max_cols
         } else {
           worksheet.max_col()
         }
@@ -96,7 +128,8 @@ fn excel_formula_metadata(workbook : @xlsx.Workbook) -> String raise {
   // sequence inside the JSON data block instead of ending the script element.
   Json::object({ "sheets": Json::object(Map(sheets)) })
   .stringify()
-  .replace(old="<", new="\\u003c")
+  .split("<")
+  .join("\\u003c")
 }
 
 ///|
@@ -143,7 +176,7 @@ fn normalize_formula_values_for_preview(
 ///|
 /// Convert the OOXML EMU size used by drawing anchors into CSS pixels. Excel
 /// uses 9,525 EMU per CSS pixel for worksheet drawings.
-fn emu_to_px(value : Int) -> Int {
+fn emu_to_px(value : Int32) -> Int32 {
   if value <= 0 {
     1
   } else {
@@ -158,7 +191,7 @@ fn emu_to_px(value : Int) -> Int {
 }
 
 ///|
-fn excel_json_int(value : Int) -> Json {
+fn excel_json_int(value : Int32) -> Json {
   Json::number(value.to_double(), repr=value.to_string())
 }
 
@@ -210,7 +243,8 @@ fn excel_object_metadata(workbook : @xlsx.Workbook) -> String raise {
   }
   Json::object({ "sheets": Json::object(Map(sheets)) })
   .stringify()
-  .replace(old="<", new="\\u003c")
+  .split("<")
+  .join("\\u003c")
 }
 
 ///|
@@ -242,12 +276,14 @@ fn replace_chart_placeholder(
 fn render_excel_document(
   workbook : @xlsx.Workbook,
   title : String,
+  max_rows : Int32,
+  max_cols : Int32,
 ) -> String raise {
   let mut rendered = @xlsx2html.render_workbook(
     workbook,
     title~,
-    max_rows=1000,
-    max_cols=256,
+    max_rows~,
+    max_cols~,
     include_images=true,
     calc=true,
   )
@@ -298,7 +334,14 @@ pub fn render_document(
   name : String,
   file : String,
   bytes : Bytes,
+  max_rows~ : Int32 = 1000,
+  max_cols~ : Int32 = 256,
 ) -> Result[RenderedDocument, String] {
+  if max_rows < 1 || max_cols < 1 || max_rows > 262144 / max_cols {
+    return Err(
+      "Preview bounds must be positive and contain at most 262144 cells.",
+    )
+  }
   let kind = match document_kind(name) {
     Some(kind) => kind
     None => return Err("Only .docx, .xlsx, and .pdf files are supported.")
@@ -306,7 +349,12 @@ pub fn render_document(
   try {
     match kind {
       Word => {
-        let model = @docx.render_docx(bytes)
+        let document = @docx.read_docx(bytes)
+        let model = @paginate.paginate(
+          document.blocks,
+          section=document.section,
+          furniture=document.furniture,
+        )
         let rendered_pages = @svg.render_pages(model)
         let annotated = Some(@docx2html.read_docx_annotated(bytes)) catch {
           _ => None
@@ -338,22 +386,37 @@ pub fn render_document(
           kind,
           name,
           file,
-          surface_html: word_surface(pages) + annotations_script(annotations),
+          surface_html: render_warning_html(document.unsupported) +
+          word_surface(pages) +
+          annotations_script(annotations),
           annotations,
           item_count: pages.length(),
-          warning: "Word layout is read-only. Reader-backed paragraph selectors are emitted only when the source and PageModel text join completely; unsupported or ambiguous text remains physical-only.",
+          warning: if document.unsupported.is_empty() {
+            ""
+          } else {
+            "Preview limitation: " +
+            document.unsupported[0] +
+            (if document.unsupported.length() > 1 {
+              " (additional limitations listed in the preview)"
+            } else {
+              ""
+            })
+          },
         })
       }
       Excel => {
         let workbook = @mbtexcel.read(bytes.exact_view())
         let annotations = bind_annotation_snapshot(
-          excel_annotations(name, file, workbook),
+          excel_annotations(name, file, workbook, max_rows~, max_cols~),
           bytes,
         )
-        let formula_metadata = excel_formula_metadata(workbook)
+        let formula_metadata = excel_formula_metadata(
+          workbook, max_rows, max_cols,
+        )
+        let freeze_metadata = excel_freeze_metadata(workbook)
         let object_metadata = excel_object_metadata(workbook)
         normalize_formula_values_for_preview(workbook)
-        let rendered = render_excel_document(workbook, name)
+        let rendered = render_excel_document(workbook, name, max_rows, max_cols)
         Ok({
           kind,
           name,
@@ -362,6 +425,9 @@ pub fn render_document(
           extract_html_body(rendered) +
           "<script type=\"application/json\" class=\"office-formula-metadata\">" +
           formula_metadata +
+          "</script>" +
+          "<script type=\"application/json\" class=\"office-freeze-metadata\">" +
+          freeze_metadata +
           "</script>" +
           "<script type=\"application/json\" class=\"office-object-metadata\">" +
           object_metadata +

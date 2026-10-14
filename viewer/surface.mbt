@@ -4,7 +4,7 @@ pub(all) struct SurfaceConfig {
   kind : DocumentKind?
   document_file : String
   surface_html : String
-  zoom : Int
+  zoom : Int32
   query : String
   prefer_system_fonts : Bool
 } derive(Eq)
@@ -78,6 +78,9 @@ pub fn interactions_command(
           }
         },
       )
+      if config.kind == Some(Excel) {
+        install_excel_freeze(config.surface_id)
+      }
     },
     kind=@cmd.after_render,
   )
@@ -107,6 +110,7 @@ pub fn visual_command(config : SurfaceConfig) -> @rabbita.Cmd {
         prepare_font_runtime(config.surface_id)
         set_system_font_mode(config.surface_id, config.prefer_system_fonts)
         apply_search(config.surface_id, config.query)
+        refresh_excel_freeze(config.surface_id)
       }
     },
     kind=@cmd.after_render,

@@ -1,12 +1,12 @@
 name = "moonbit-community/office-viewer"
 
-version = "0.1.0"
+version = "0.2.0"
 
 import {
   "moonbit-community/rabbita@0.16.3",
-  "moonbitlang/docx2html@0.6.1",
-  "moonbitlang/mbtexcel@0.2.0",
-  "moonbitlang/pagelayout@0.2.0",
+  "moonbitlang/docx2html@0.7.0",
+  "moonbitlang/mbtexcel@0.3.0",
+  "moonbitlang/pagelayout@0.8.0",
   "moonbitlang/x@0.5.5",
 }
 
