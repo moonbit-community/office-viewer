@@ -1,0 +1,9 @@
+import {
+  "moonbit-community/office-viewer/internal/browser",
+  "moonbit-community/rabbita/dom",
+  "moonbitlang/core/json",
+}
+
+supported_targets = "js"
+
+pkgtype(kind: "executable")

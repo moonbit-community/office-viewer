@@ -1,0 +1,39 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/office-viewer/internal/browser"
+
+import {
+  "moonbit-community/rabbita/dom",
+}
+
+// Values
+pub fn annotation_avatar(Json) -> @dom.Element
+
+pub fn apply_search(String, String) -> Unit
+
+pub fn clear_surface_selection(String) -> Unit
+
+pub fn dispose_surface_interactions(String) -> Unit
+
+pub fn focus_surface_annotation(String, String) -> Bool
+
+pub fn install_excel_freeze(String) -> Unit
+
+pub fn install_surface_interactions(String, String, String, String, (String) -> Unit, (String, Int, Int, String) -> Unit) -> Unit
+
+pub fn prepare_font_runtime(String) -> Unit
+
+pub fn refresh_excel_freeze(String) -> Unit
+
+pub fn select_surface_annotation(String, String) -> Bool
+
+pub fn set_surface_zoom(String, Double) -> Unit
+
+pub fn set_system_font_mode(String, Bool) -> Unit
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

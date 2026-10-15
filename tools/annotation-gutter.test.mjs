@@ -3,10 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { after, before, test } from 'node:test';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const source = await readFile(new URL('../viewer/ffi.mbt', import.meta.url), 'utf8');
-const runtime = source.split('extern "js" fn install_surface_interactions(')[1]
-  .split('\n///|')[0].split('\n').filter(line => line.startsWith('  #|'))
-  .map(line => line.slice(5)).join('\n');
+import { runtime } from './browser-runtime.mjs';
 const styles = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
 let browser;
 before(async () => {
@@ -41,14 +38,15 @@ async function setup(t, width = 1250, viewportWidth = 1500, content = html, kind
   t.after(() => page.close());
   await page.setContent(`<style>${styles}\n#document { width:${width}px; margin:20px; }</style>
     <div id="document" class="surface office-viewer-surface ${kind === 'word' ? 'word-surface' : 'sheet-surface'}"></div>`);
-  await page.evaluate(({ runtime, html, file, kind }) => {
+  await page.addScriptTag({ content: runtime });
+  await page.evaluate(({ html, file, kind }) => {
     window.annotationEvents = [];
     window.documentEvents = [];
-    window.installFixture = () => (0, eval)(`(${runtime})`)('document', kind, file, html,
+    window.installFixture = () => window.officeTest.install('document', kind, file, html,
       event => window.documentEvents.push(event),
       (item, start, end, scope) => window.annotationEvents.push({ item: JSON.parse(item), start, end, scope }));
     window.installFixture();
-  }, { runtime, html: content, file: kind === 'word' ? identity.file : '/docs/review.xlsx', kind });
+  }, { html: content, file: kind === 'word' ? identity.file : '/docs/review.xlsx', kind });
   await settle(page);
   return page;
 }
