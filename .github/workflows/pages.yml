@@ -58,7 +58,7 @@ jobs:
           moon check --target js
           moon test --target js -p moonbit-community/office-viewer/viewer
           moon test --target js -p moonbit-community/office-viewer/cmd/browser
-      - name: Test frozen panes in Chromium
+      - name: Test browser interactions in Chromium
         run: |
           npx --no-install playwright install --with-deps chromium
           npm run test:browser

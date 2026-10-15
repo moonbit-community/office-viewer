@@ -102,13 +102,14 @@ and Deferred output and PDF reference resolution. See
 [PDF preview](docs/pdf-preview.md) for the PDF contract and browser tests.
 
 Existing DOCX comments/w15 replies and Excel traditional Notes are available
-in a default-visible document gutter and the optional Comments overview, and through
+in a document gutter and the optional Comments overview, and through
 `@viewer.read_annotations` or
 `RenderedDocument.annotations`. The `office.annotations.v1` contract preserves
 missing metadata and explicit support limits. Word navigation shows only proven
 paragraph context; Notes beyond preview bounds remain in the list and JSON.
-Comment and reply bodies appear on file load without opening Comments or
-clicking a marker. Select a whole comment or highlight any body text to capture an
+The gutter opens alongside the document when space permits; on narrow layouts,
+open its heading or a source marker to read comments and replies. Quote a whole
+comment or highlight any body text to capture an
 `office.selection.v1` annotation-body selection, including source identity and
 UTF-16 offsets. Preview/deferred modes retain the reference without leaking the
 unselected body.

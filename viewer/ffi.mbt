@@ -460,9 +460,9 @@ extern "js" fn install_surface_interactions(
   #|         cell.dataset.sheet === anchor.sheet && cell.dataset.cell === anchor.cell);
   #|     }
   #|     if (kind === 'word' && anchor.kind === 'docx' && Array.isArray(anchor.locations)) {
-  #|       return Array.from(host.querySelectorAll('svg text[data-source-path]')).filter(node =>
-  #|         anchor.locations.some(location => location.part === node.dataset.sourcePart &&
-  #|           location.path === node.dataset.sourcePath));
+  #|       return Array.from(host.querySelectorAll('svg text[data-comment-path], svg text[data-source-path]')).filter(node =>
+  #|         anchor.locations.some(location => location.part === (node.dataset.commentPart || node.dataset.sourcePart) &&
+  #|           location.path === (node.dataset.commentPath || node.dataset.sourcePath)));
   #|     }
   #|     return [];
   #|   };
@@ -522,11 +522,102 @@ extern "js" fn install_surface_interactions(
   #|   const sourceLabel = item => {
   #|     const a = item.anchor || {};
   #|     if (a.kind === 'xlsx') return `${a.sheet || 'Unknown sheet'}!${a.cell || 'Unknown cell'}`;
-  #|     const paths = (a.locations || []).map(location => location.path).filter(Boolean);
-  #|     return paths.length ? `Paragraph ${paths.join(', ')} · context only` : 'Unplaced Word comment';
+  #|     const pages = [...new Set(annotationTargets(item).map(node => node.closest('.word-page')?.dataset.page).filter(Boolean))];
+  #|     return pages.length ? `${pages.length > 1 ? 'Pages' : 'Page'} ${pages.join(', ')}` : 'Location unavailable';
+  #|   };
+  #|   const annotationDate = value => {
+  #|     if (typeof value !== 'string' || !value) return '';
+  #|     const date = new Date(value);
+  #|     return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(undefined,
+  #|       { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
+  #|   };
+  #|   const avatarSegmenter = typeof Intl.Segmenter === 'function'
+  #|     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+  #|   const avatarCharacters = value => avatarSegmenter
+  #|     ? Array.from(avatarSegmenter.segment(value), entry => entry.segment) : Array.from(value);
+  #|   const avatarString = value => typeof value === 'string' ? value.trim().normalize('NFC') : '';
+  #|   const annotationAuthor = item => avatarString(item.author) || 'Unknown author';
+  #|   const annotationAvatar = item => {
+  #|     const author = avatarString(item.author), initials = avatarString(item.initials);
+  #|     const words = author.split(/\s+/u).filter(Boolean);
+  #|     const label = initials ? avatarCharacters(initials.replace(/\s+/gu, '')).slice(0, 2).join('') :
+  #|       words.length > 1 ? avatarCharacters(words[0])[0] + avatarCharacters(words[words.length - 1])[0] :
+  #|       avatarCharacters(author).slice(0, 2).join('');
+  #|     const avatar = element('span', 'office-annotation-avatar');
+  #|     avatar.setAttribute('aria-hidden', 'true');
+  #|     if (label) {
+  #|       const palette = [
+  #|         ['#e0e7ff', '#3730a3'], ['#dcfce7', '#166534'], ['#fce7f3', '#9d174d'],
+  #|         ['#fef3c7', '#92400e'], ['#e0f2fe', '#075985'], ['#f3e8ff', '#6b21a8'],
+  #|       ];
+  #|       let hash = 0;
+  #|       for (const character of author || initials) hash = (Math.imul(hash, 31) + character.codePointAt(0)) >>> 0;
+  #|       const [background, color] = palette[hash % palette.length];
+  #|       avatar.style.setProperty('--office-avatar-background', background);
+  #|       avatar.style.setProperty('--office-avatar-color', color);
+  #|       avatar.textContent = label.toUpperCase();
+  #|     } else {
+  #|       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  #|       for (const [name, value] of Object.entries({ viewBox: '0 0 24 24', width: '18', height: '18',
+  #|         fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round' }))
+  #|         svg.setAttribute(name, value);
+  #|       const head = document.createElementNS(svg.namespaceURI, 'circle');
+  #|       head.setAttribute('cx', '12'); head.setAttribute('cy', '8'); head.setAttribute('r', '3');
+  #|       const shoulders = document.createElementNS(svg.namespaceURI, 'path');
+  #|       shoulders.setAttribute('d', 'M5 20v-1a7 7 0 0 1 14 0v1');
+  #|       svg.appendChild(head); svg.appendChild(shoulders); avatar.appendChild(svg);
+  #|     }
+  #|     return avatar;
+  #|   };
+  #|   // Avatar presentation travels with the reusable surface, including hosts
+  #|   // that provide their own stylesheet for the surrounding comment cards.
+  #|   if (annotations.length) {
+  #|     const styles = element('style', 'office-annotation-avatar-styles');
+  #|     styles.textContent = `
+  #|       .office-viewer-surface .office-annotation-avatar { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; width: 28px; height: 28px; box-sizing: border-box; border-radius: 50%; background: var(--office-avatar-background, #e2e8f0); color: var(--office-avatar-color, #475569); font-family: system-ui, sans-serif; font-size: 11px; font-weight: 650; line-height: 1; user-select: none; overflow: hidden; vertical-align: middle; }
+  #|       .office-viewer-surface .office-context-person { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  #|       .office-viewer-surface .office-context-person > .office-context-author { min-width: 0; }
+  #|       .office-viewer-surface .office-context-quote { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; max-height: 40px; margin: 8px 0 0; padding: 0 0 0 8px; border-left: 2px solid #cbd5e1; color: #64748b; font-size: 12px; line-height: 1.6; }
+  #|       .office-viewer-surface .office-comment-source-marker { display: grid; place-items: center; }
+  #|       .office-viewer-surface .office-comment-source-marker::before { display: none; }
+  #|       .office-viewer-surface .office-comment-source-marker[hidden],
+  #|       .office-viewer-surface .office-context-rail[open] .office-comment-source-marker { display: none; }
+  #|       @media (max-width: 760px) {
+  #|         .office-viewer-surface .office-comment-source-marker { display: none; }
+  #|       }
+  #|       @media (min-width: 761px) {
+  #|         .office-viewer-surface .office-context-rail:not([open]) { flex-basis: 36px; width: 36px; }
+  #|         .office-viewer-surface .office-context-rail:not([open]) > .office-context-heading { padding-left: 8px; padding-right: 8px; }
+  #|         .office-viewer-surface .office-context-rail:not([open]) .office-context-heading-label { display: none; }
+  #|         .office-viewer-surface .office-context-word { justify-content: center; gap: 12px; }
+  #|         .office-viewer-surface .office-context-word > .office-context-document { flex: 0 1 auto; width: max-content; }
+  #|         .office-viewer-surface .office-context-word > .office-context-rail[open] > .office-context-placed > .office-context-card { left: 0; right: 0; }
+  #|         .office-viewer-surface .office-context-word > .office-context-rail[open] .office-context-unplaced-card,
+  #|         .office-viewer-surface .office-context-word > .office-context-rail[open] .office-context-unplaced-heading,
+  #|         .office-viewer-surface .office-context-word > .office-context-rail[open] .office-context-more { margin-left: 0; }
+  #|       }
+  #|     `;
+  #|     host.appendChild(styles);
+  #|     cleanups.push(() => styles.remove());
+  #|   }
+  #|   const positionAnnotationMarkers = () => {
+  #|     let previousMarkerTop = -28;
+  #|     for (const group of [...markerGroups].sort((a, b) => a.targets[0].getBoundingClientRect().top - b.targets[0].getBoundingClientRect().top)) {
+  #|       const target = visibleTarget(group.targets);
+  #|       group.button.hidden = !target;
+  #|       if (target && kind === 'word') {
+  #|         const sourceTop = Math.max(0, target.getBoundingClientRect().top - rail.getBoundingClientRect().top);
+  #|         const top = Math.max(sourceTop, previousMarkerTop + 28);
+  #|         group.button.style.top = `${top}px`;
+  #|         group.button.style.setProperty('--office-marker-offset', `${sourceTop - top}px`);
+  #|         previousMarkerTop = top;
+  #|       }
+  #|     }
   #|   };
   #|   const positionAnnotations = () => {
   #|     if (!alive || !rail || !rail.isConnected) return;
+  #|     positionAnnotationMarkers();
+  #|     if (!rail.open) return;
   #|     const origin = placed.getBoundingClientRect().top + rail.scrollTop;
   #|     let bottom = 0, unplacedCount = 0;
   #|     const ordered = cards.map(record => ({ record, target: visibleTarget(record.context.targets) }))
@@ -544,33 +635,19 @@ extern "js" fn install_surface_interactions(
   #|         card.dataset.sourceTop = String(sourceTop);
   #|         card.style.setProperty('--office-card-offset', `${sourceTop - top}px`);
   #|         bottom = top + (card.offsetHeight || card.getBoundingClientRect().height || 1) + 12;
-  #|         hint.textContent = `${sourceLabel(context.item)}${context.item !== root ? ` · Thread shown at ${context.item.id}'s source context.` : ''}`;
+  #|         hint.textContent = `${sourceLabel(context.item)}${context.item !== root ? ' · Reply location' : ''}`;
   #|       } else {
   #|         unplacedCount++;
   #|         card.style.top = '';
   #|         const a = context.item.anchor || {};
-  #|         const reason = kind !== 'excel' ? 'No reliable rendered paragraph anchor.' :
-  #|           a.sheet !== host.dataset.officeActiveSheet ? 'On another worksheet; body shown here now.' :
-  #|           a.preview === 'outside-preview' ? 'Outside the rendered preview.' : 'Cell not in the current view.';
-  #|         hint.textContent = `${sourceLabel(context.item)} · ${reason}`;
+  #|         const reason = a.sheet !== host.dataset.officeActiveSheet ? 'Another worksheet' :
+  #|           a.preview === 'outside-preview' ? 'Outside the preview' : 'Outside the current view';
+  #|         hint.textContent = kind === 'word' ? 'Location unavailable' : `${sourceLabel(context.item)} · ${reason}`;
   #|       }
   #|     }
   #|     placed.style.height = `${bottom}px`;
   #|     unplacedHeading.hidden = unplacedCount === 0;
-  #|     unplacedHeading.textContent = kind === 'word' ? `Unplaced comments (${unplacedCount} threads)` :
-  #|       `Other locations (${unplacedCount} Notes) — bodies are shown below`;
-  #|     let previousMarkerTop = -28;
-  #|     for (const group of [...markerGroups].sort((a, b) => a.targets[0].getBoundingClientRect().top - b.targets[0].getBoundingClientRect().top)) {
-  #|       const target = visibleTarget(group.targets);
-  #|       group.button.hidden = !target;
-  #|       if (target && kind === 'word') {
-  #|         const sourceTop = Math.max(0, target.getBoundingClientRect().top - rail.getBoundingClientRect().top);
-  #|         const top = Math.max(sourceTop, previousMarkerTop + 28);
-  #|         group.button.style.top = `${top}px`;
-  #|         group.button.style.setProperty('--office-marker-offset', `${sourceTop - top}px`);
-  #|         previousMarkerTop = top;
-  #|       }
-  #|     }
+  #|     unplacedHeading.textContent = kind === 'word' ? `Other comments · ${unplacedCount}` : `Other notes · ${unplacedCount}`;
   #|   };
   #|   let layoutFrame = null;
   #|   const scheduleAnnotationLayout = () => {
@@ -580,6 +657,7 @@ extern "js" fn install_surface_interactions(
   #|   host.__officeLayoutAnnotations = scheduleAnnotationLayout;
   #|   const showAnnotation = (item, _choices = [item], navigate = false) => {
   #|     if (!currentAnnotation(item) || !rail) return false;
+  #|     rail.open = true;
   #|     const context = contextFor(item);
   #|     if (!context.targets.length) return false;
   #|     if (kind === 'excel' && host.dataset.officeActiveSheet !== context.item.anchor.sheet)
@@ -613,7 +691,7 @@ extern "js" fn install_surface_interactions(
   #|       card.dataset.officeThreadId = root.id;
   #|       card.setAttribute('aria-label', root.type === 'xlsx.note' ? 'Cell Note' : 'Comment thread');
   #|       const header = element('div', 'office-context-header');
-  #|       header.appendChild(element('strong', '', root.type === 'xlsx.note' ? 'Note' : `Comment · ${root.id}`));
+  #|       header.appendChild(element('strong', '', root.type === 'xlsx.note' ? 'Note' : 'Comment'));
   #|       const locate = element('button', 'office-context-select', 'Show source');
   #|       locate.type = 'button';
   #|       locate.disabled = context.targets.length === 0;
@@ -622,15 +700,25 @@ extern "js" fn install_surface_interactions(
   #|       card.appendChild(header);
   #|       const hint = element('div', 'office-context-location', sourceLabel(contextItem));
   #|       card.appendChild(hint);
+  #|       if (kind === 'word' && context.targets.length) {
+  #|         const sourceText = context.targets.map(node => node.textContent || '').join('').trim();
+  #|         if (sourceText) {
+  #|           const quote = element('blockquote', 'office-context-quote', sourceText);
+  #|           quote.title = sourceText;
+  #|           card.appendChild(quote);
+  #|         }
+  #|       }
   #|       for (const entry of items) {
   #|         const row = element('section', 'office-context-entry' + (entry !== root ? ' office-context-reply' : ''));
   #|         row.dataset.officeAnnotationId = entry.id;
   #|         row.classList.toggle('office-annotation-selected', entry.id === selectedAnnotationId);
-  #|         row.appendChild(element('div', 'office-context-author', entry.author || 'Unknown author'));
-  #|         row.appendChild(element('div', 'office-context-meta', [entry.date || 'Date unknown',
-  #|           entry.resolved === true ? 'Resolved' : entry.resolved === false ? 'Open' : 'Resolution unknown'].join(' · ')));
-  #|         if (entry !== root) row.appendChild(element('div', 'office-context-hint',
-  #|           `Reply to ${entry.parent_id}. ${annotationTargets(entry).length ? 'Own source context recorded.' : 'No own rendered location; grouped with this thread.'}`));
+  #|         const person = element('div', 'office-context-person');
+  #|         person.appendChild(annotationAvatar(entry));
+  #|         person.appendChild(element('div', 'office-context-author', annotationAuthor(entry)));
+  #|         row.appendChild(person);
+  #|         const meta = [annotationDate(entry.date), entry.resolved === true ? 'Resolved' : ''].filter(Boolean);
+  #|         if (meta.length) row.appendChild(element('div', 'office-context-meta', meta.join(' · ')));
+  #|         if (entry !== root) row.appendChild(element('div', 'office-context-hint', 'Reply'));
   #|         const known = availableBody(entry);
   #|         const body = element('div', 'office-annotation-body', known ? entry.text : 'Comment text unavailable.');
   #|         body.dataset.officeAnnotationBody = entry.id;
@@ -644,7 +732,7 @@ extern "js" fn install_surface_interactions(
   #|           if (!selection || selection.isCollapsed) host.__officeSelectAnnotation(entry);
   #|         });
   #|         row.appendChild(body);
-  #|         const select = element('button', 'office-context-select', entry.type === 'xlsx.note' ? 'Select Note' : 'Select comment');
+  #|         const select = element('button', 'office-context-select office-context-quote-action', entry.type === 'xlsx.note' ? 'Quote note' : 'Quote comment');
   #|         select.type = 'button'; select.disabled = !known;
   #|         select.addEventListener('click', () => { if (select.isConnected) host.__officeSelectAnnotation(entry); });
   #|         row.appendChild(select);
@@ -655,7 +743,7 @@ extern "js" fn install_surface_interactions(
   #|     }
   #|     if (visibleCount < annotations.length) {
   #|       const more = element('div', 'office-context-more');
-  #|       more.appendChild(element('p', '', `Showing ${visibleCount} of ${annotations.length} annotation bodies. Nothing is omitted from the structured data.`));
+  #|       more.appendChild(element('p', '', `${visibleCount} of ${annotations.length} ${kind === 'word' ? 'comments' : 'notes'}`));
   #|       const button = element('button', 'office-context-select', `Show ${Math.min(200, annotations.length - visibleCount)} more`);
   #|       button.type = 'button';
   #|       button.addEventListener('click', () => { visibleCount = Math.min(annotations.length, visibleCount + 200); renderAnnotationCards(); });
@@ -670,11 +758,20 @@ extern "js" fn install_surface_interactions(
   #|     if (content) {
   #|       const layout = element('div', `office-context-layout office-context-${kind}`);
   #|       const documentColumn = element('div', 'office-context-document');
-  #|       rail = element('div', 'office-context-rail office-default-annotations');
+  #|       rail = element('details', 'office-context-rail office-default-annotations');
+  #|       const pageWidth = kind === 'word' ? content.querySelector('.word-page')?.getBoundingClientRect().width || 0 : 0;
+  #|       rail.open = !host.clientWidth || host.clientWidth >= Math.max(680, pageWidth + 352);
   #|       rail.setAttribute('aria-label', 'Comments alongside the document');
   #|       host.insertBefore(layout, content);
   #|       layout.appendChild(documentColumn); documentColumn.appendChild(content); layout.appendChild(rail);
-  #|       rail.appendChild(element('div', 'office-context-heading', `${annotations.length} ${kind === 'word' ? 'comments and replies' : 'Notes'} · select text directly below`));
+  #|       const heading = element('summary', 'office-context-heading');
+  #|       const headingText = `${kind === 'word' ? 'Comments' : 'Notes'} · ${annotations.length}`;
+  #|       heading.dataset.count = String(annotations.length);
+  #|       heading.appendChild(element('span', 'office-context-heading-label', headingText));
+  #|       heading.setAttribute('aria-label', headingText);
+  #|       heading.title = headingText;
+  #|       rail.appendChild(heading);
+  #|       add(rail, 'toggle', scheduleAnnotationLayout);
   #|       placed = element('div', 'office-context-placed'); rail.appendChild(placed);
   #|       unplacedHeading = element('div', 'office-context-unplaced-heading'); rail.appendChild(unplacedHeading);
   #|       unplaced = element('div', 'office-context-unplaced'); rail.appendChild(unplaced);
@@ -690,25 +787,44 @@ extern "js" fn install_surface_interactions(
   #|       node.dataset.officeAnnotationIds = JSON.stringify(ids);
   #|       const page = node.closest('.word-page');
   #|       let group = markerGroups.find(group => kind === 'excel' ? group.targets[0] === node :
-  #|         group.page === page && group.part === node.dataset.sourcePart && group.path === node.dataset.sourcePath);
+  #|         group.page === page && group.part === (node.dataset.commentPart || node.dataset.sourcePart) &&
+  #|         group.path === (node.dataset.commentPath || node.dataset.sourcePath));
   #|       if (!group) {
-  #|         const button = element('button', kind === 'excel' ? 'office-note-marker' : 'office-comment-marker');
+  #|         const button = element('button', kind === 'excel' ? 'office-note-marker' : 'office-comment-marker office-comment-source-marker');
   #|         button.type = 'button';
-  #|         group = { button, targets: [], items: [], page, part: node.dataset.sourcePart, path: node.dataset.sourcePath };
+  #|         if (kind === 'word') {
+  #|           const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  #|           for (const [name, value] of Object.entries({ viewBox: '0 0 24 24', width: '14', height: '14',
+  #|             fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linejoin': 'round', 'aria-hidden': 'true' }))
+  #|             icon.setAttribute(name, value);
+  #|           const bubble = document.createElementNS(icon.namespaceURI, 'path');
+  #|           bubble.setAttribute('d', 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z');
+  #|           icon.appendChild(bubble); button.appendChild(icon);
+  #|         }
+  #|         group = { button, targets: [], items: [], page, part: node.dataset.commentPart || node.dataset.sourcePart,
+  #|           path: node.dataset.commentPath || node.dataset.sourcePath };
   #|         markerGroups.push(group);
-  #|         if (kind === 'excel') node.appendChild(button); else if (rail) rail.appendChild(button);
+  #|         if (kind === 'excel') node.appendChild(button); else if (rail) rail.querySelector('summary').appendChild(button);
   #|         const linkedGroup = group;
   #|         add(button, 'click', event => {
   #|           event.preventDefault(); event.stopPropagation();
   #|           const selected = linkedGroup.items[0];
-  #|           if (showAnnotation(selected, linkedGroup.items)) host.__officeSelectAnnotation(selected);
+  #|           if (showAnnotation(selected, linkedGroup.items)) {
+  #|             if (kind === 'excel') host.__officeSelectAnnotation(selected);
+  #|             else {
+  #|               positionAnnotations();
+  #|               const record = cards.find(record => record.items.includes(selected));
+  #|               record?.card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  #|             }
+  #|           }
   #|         });
   #|         cleanups.push(() => button.remove());
   #|       }
   #|       if (!group.targets.includes(node)) group.targets.push(node);
   #|       if (!group.items.includes(item)) group.items.push(item);
-  #|       group.button.setAttribute('aria-label', `Select ${kind === 'excel' ? 'Note' : 'comment'} at ${kind === 'excel' ? node.dataset.cell : group.path}`);
-  #|       group.button.setAttribute('title', 'Comment bodies are already shown alongside the document');
+  #|       const authors = [...new Set(group.items.map(entry => annotationAuthor(threadRoot(entry))))].join(', ');
+  #|       group.button.setAttribute('aria-label', `${kind === 'excel' ? 'Note' : 'Comment'} · ${sourceLabel(item)} · ${authors}`);
+  #|       group.button.setAttribute('title', `Show comment by ${authors}`);
   #|     }
   #|   }
   #|   host.__officeFocusAnnotation = request => {
