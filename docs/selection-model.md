@@ -85,6 +85,10 @@ Excel selector therefore follows the canonical `/xlsx/sheet[name=...]/cell[...]`
 shape for one cell and `/xlsx/sheet[name=...]/range[...]` for a rectangle,
 matching `office.mbt`'s selector parser.
 
+During a drag, only valid data cells in the anchor table update the selection.
+Moving outside the grid or onto an unrelated or malformed cell retains the
+last valid range; releasing the pointer emits that highlighted range.
+
 ## Annotation-body selections
 
 Comments and Notes are separate selectable content, not document text or a cell

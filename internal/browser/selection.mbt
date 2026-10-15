@@ -338,15 +338,25 @@ fn SurfaceRuntime::install_selection(self : SurfaceRuntime) -> Unit {
     }
   })
   self.listen(@dom.window().as_event_target(), "pointermove", event => {
-    guard self.pointer is Some(ExcelPointer(pointer)) else { return }
-    if event.to_mouse_event() is Some(mouse) {
-      if @dom.document()
-        .element_from_point(mouse.get_client_x(), mouse.get_client_y())
-        .bind(node => node.closest("td"))
-        is Some(cell) {
-        pointer.active = cell
-      }
+    if !self.alive {
+      return
     }
+    guard self.pointer is Some(ExcelPointer(pointer)) else { return }
+    guard event.to_mouse_event() is Some(mouse) else { return }
+    guard @dom.document()
+      .element_from_point(mouse.get_client_x(), mouse.get_client_y())
+      .bind(node => node.closest("td"))
+      is Some(cell) &&
+      attr(cell, "data-cell") != "" &&
+      cell_bounds(cell) is Some(_) &&
+      cell.closest("table") is Some(table) &&
+      same(table, pointer.table) else {
+      return
+    }
+    if same(cell, pointer.active) {
+      return
+    }
+    pointer.active = cell
     ignore(self.select_cells(pointer.anchor, pointer.active))
   })
   self.listen(@dom.window().as_event_target(), "pointerup", event => {

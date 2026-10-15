@@ -224,3 +224,79 @@ test('replacing or detaching the root retires the old snapshot and global listen
   });
   assert.equal(await page.evaluate(() => window.runtimeListeners.length), 0);
 });
+
+async function cellCenter(page, selector) {
+  const box = await page.locator(selector).boundingBox();
+  assert.ok(box, `visible drag target: ${selector}`);
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+async function startExcelRange(page) {
+  const start = await cellCenter(page, 'section[data-sheet="First"] td[data-cell="A3"]');
+  const end = await cellCenter(page, 'section[data-sheet="First"] td[data-cell="B3"]');
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y);
+  return end;
+}
+
+test('Excel release over unrelated or malformed cells reports the last valid highlighted range', async t => {
+  for (const invalid of ['other-table', 'missing-address', 'missing-row', 'missing-column', 'invalid-coordinate']) {
+    const page = await setup(t, excel(), 'excel');
+    await page.evaluate(invalid => {
+      let cell;
+      if (invalid === 'other-table') {
+        const table = document.createElement('table');
+        table.style.cssText = 'position:fixed;left:1300px;top:800px;width:150px;z-index:9999;background:white';
+        table.innerHTML = '<tbody><tr><td data-cell="Z9" data-row="9" data-col="26">Unrelated</td></tr></tbody>';
+        document.body.appendChild(table);
+        cell = table.querySelector('td');
+      } else {
+        cell = document.querySelector('section[data-sheet="First"] td[data-cell="C3"]');
+        if (invalid === 'missing-address') cell.removeAttribute('data-cell');
+        if (invalid === 'missing-row') cell.removeAttribute('data-row');
+        if (invalid === 'missing-column') cell.removeAttribute('data-col');
+        if (invalid === 'invalid-coordinate') cell.dataset.row = 'NaN';
+      }
+      cell.id = 'invalid-drag-target';
+    }, invalid);
+    await startExcelRange(page);
+    const target = await cellCenter(page, '#invalid-drag-target');
+    assert.equal(await page.evaluate(point => document.elementFromPoint(point.x, point.y)?.closest('td')?.id, target), 'invalid-drag-target', `${invalid}: drag hits the invalid cell`);
+    await page.mouse.move(target.x, target.y);
+    await page.mouse.up();
+    const result = await page.evaluate(() => ({
+      events: window.events,
+      highlighted: [...document.querySelectorAll('td.office-cell-selected')].map(cell => cell.dataset.cell),
+      active: [...document.querySelectorAll('td.office-cell-active')].map(cell => cell.dataset.cell),
+    }));
+    assert.equal(result.events.length, 1, `${invalid}: highlighted range reaches the consumer`);
+    assert.equal(result.events[0].range, 'A3:B3', invalid);
+    assert.deepEqual(result.events[0].cells.map(cell => cell.address), ['A3', 'B3'], invalid);
+    assert.deepEqual(result.highlighted, ['A3', 'B3'], invalid);
+    assert.deepEqual(result.active, ['B3'], invalid);
+  }
+});
+
+test('Excel movement within one cell or outside the grid skips full-table scans', async t => {
+  const page = await setup(t, excel(), 'excel');
+  const active = await startExcelRange(page);
+  await page.evaluate(() => {
+    window.tableScans = 0;
+    const table = document.querySelector('section[data-sheet="First"] table');
+    const query = table.querySelectorAll;
+    table.querySelectorAll = function(selector) {
+      if (selector === 'td[data-cell]' || selector === 'td.office-cell-selected, td.office-cell-active') window.tableScans++;
+      return query.call(this, selector);
+    };
+  });
+  for (let i = 1; i <= 5; i++) await page.mouse.move(active.x + i, active.y);
+  assert.equal(await page.evaluate(() => window.tableScans), 0, 'same-cell movement does not rescan');
+  await page.mouse.move(1450, 1000);
+  await page.evaluate(() => window.dispatchEvent(new Event('pointermove')));
+  assert.equal(await page.evaluate(() => window.tableScans), 0, 'outside-grid and non-mouse movement do not rescan');
+  await page.mouse.up();
+  const events = await page.evaluate(() => window.events);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].range, 'A3:B3');
+});
