@@ -2,6 +2,10 @@
 
 ## 0.2.0 (unreleased)
 
+- Keep author fallback avatars beside their names inside comment cards, and
+  place the Word comment gutter 12 pixels from the page with no stray avatars.
+- Collapse narrow comment gutters, with source markers opening the relevant
+  thread and source excerpts keeping expanded cards connected to the document.
 - Freeze authored Excel rows and columns while scrolling, including after zoom
   and worksheet switches.
 - Allow embedding hosts to configure the Excel preview window, with a per-sheet

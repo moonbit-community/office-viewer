@@ -10,7 +10,8 @@
     "playwright": "1.60.0"
   },
   "scripts": {
-    "test:browser": "node --test tools/excel-freeze.test.mjs",
-    "build:pages": "bash scripts/build-pages.sh"
+    "test:browser": "node --test tools/excel-freeze.test.mjs tools/annotation-gutter.test.mjs tools/annotation-avatars.test.mjs",
+    "build:pages": "bash scripts/build-pages.sh",
+    "test:annotation-avatars": "node --test tools/annotation-avatars.test.mjs"
   }
 }

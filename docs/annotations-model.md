@@ -128,14 +128,28 @@ comments.” The envelope makes this limitation explicit even for an empty file.
 
 Call the existing `@viewer.interactions_command` after rendering the surface.
 It marks visible cells and mapped Word paragraph contexts, using the same JSON.
-Comment/reply bodies are rendered automatically in the document gutter on file
-load; markers only aid selection and source navigation. No Comments-panel or
-marker click is required to read or natively select the text. Multiple cards
+Comment/reply bodies are rendered in the document gutter on file load;
+markers aid source navigation and open the relevant thread. Multiple cards
 are stacked without covering the document. Unmapped Word comments, Notes on
 other sheets, and Notes outside the current view are automatically listed with
 explicit source-location labels. Very large files initially show 200 bodies,
 with an explicit count and a gutter control to show the next 200. On narrow
-screens the labeled cards flow below the document viewport. The page SVG
+screens the gutter is collapsed and can be opened from its heading or a marker.
+Comment, reply, and Note authors have local circular avatars. Explicit Word
+initials take priority; otherwise the viewer derives up to two characters from
+the author's name. Colors are stable for the same author name. Missing author
+information uses a neutral person icon. Avatars stay beside their author names
+inside the comment cards. When the Word gutter is collapsed, speech-bubble
+markers identify source paragraphs and open the relevant thread. When it is
+expanded, the cards' source excerpts and Show source actions provide navigation
+without a second row of markers beside unrelated cards.
+On desktop, the Word pages and gutter are centered as a single group with a
+12-pixel gap between the paper and the comment cards. The document column does
+not expand into unused width between them.
+Avatar styles ship with the interaction runtime so
+embedded hosts do not need a separate stylesheet update. No account lookup or
+remote profile-image request is made.
+The page SVG
 and worksheet source content are unchanged. Word placement remains paragraph
 context, not an exact commented range. Linked replies shown with a parent's
 context are labeled as such; their original anchors are not modified.
@@ -154,7 +168,7 @@ available body (also for off-preview or unanchored items), hosts can invoke
 `@viewer.select_annotation_command(surface_id, item, on_result~)`. It emits the
 normal interactions callback with `office.selection.v1`, `kind: "annotation"`.
 Native highlighting within the contextual body emits the selected substring and
-its exact UTF-16 range; the **Select comment** action emits the whole body. Both
+its exact UTF-16 range; the **Quote comment** action emits the whole body. Both
 commands require matching current file/hash/item identity. See
 [`selection-model.md`](selection-model.md#annotation-body-selections) for the
 contract and bounded preview/deferred behavior. The
