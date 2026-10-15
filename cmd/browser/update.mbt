@@ -18,7 +18,8 @@ fn visual_command(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Cmd {
   @rabbita.batch([
     @viewer.visual_command(surface_config(model)),
     @viewer.fit_width_command(
-      surface_config(model),
+      "document-surface",
+      surface_config(model).kind,
       zoom => emit(WidthFitted(model.generation, zoom)),
       enabled=model.fit_width,
     ),

@@ -185,7 +185,7 @@ inferred table/paragraph extraction are outside the current PDF surface.
 
 ## Fit to the available width
 
-Call `fit_width_command(config, on_zoom)` after mounting a DOCX or XLSX
+Call `fit_width_command(surface_id, kind, on_zoom)` after mounting a DOCX or XLSX
 surface. It measures the page or active sheet and the available host width,
 including padding and the current comment gutter. Resize observers keep the
 page fitted when its panel or gutter changes size. The callback reports the

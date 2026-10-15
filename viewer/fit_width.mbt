@@ -4,15 +4,16 @@
 /// manual zoom; call again with enabled=true when the user chooses Fit width.
 /// Surface disposal retires the resize observer and pending animation frame.
 pub fn fit_width_command(
-  config : SurfaceConfig,
+  surface_id : String,
+  kind : DocumentKind?,
   on_zoom : (Int32) -> @cmd.Cmd,
   enabled~ : Bool = true,
 ) -> @cmd.Cmd {
   @cmd.custom_cmd(
     scheduler => {
       @browser_runtime.configure_fit_width(
-        config.surface_id,
-        surface_kind(config.kind),
+        surface_id,
+        surface_kind(kind),
         enabled,
         zoom => scheduler.add(on_zoom(zoom)),
       )

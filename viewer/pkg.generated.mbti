@@ -19,7 +19,7 @@ pub fn dispose_interactions_command(String) -> @cmd.Cmd
 
 pub fn document_kind(String) -> DocumentKind?
 
-pub fn fit_width_command(SurfaceConfig, (Int) -> @cmd.Cmd, enabled? : Bool) -> @cmd.Cmd
+pub fn fit_width_command(String, DocumentKind?, (Int) -> @cmd.Cmd, enabled? : Bool) -> @cmd.Cmd
 
 pub fn focus_annotation_command(String, Json, on_result? : (Bool) -> @cmd.Cmd) -> @cmd.Cmd
 
