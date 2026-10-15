@@ -1,0 +1,8 @@
+import {
+  "moonbit-community/rabbita/dom",
+  "moonbit-community/rabbita/js",
+  "moonbitlang/core/json",
+  "moonbitlang/core/double",
+}
+
+supported_targets = "js"

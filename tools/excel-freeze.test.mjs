@@ -4,11 +4,7 @@ import { after, before, test } from 'node:test';
 
 // A module override supports CI environments that provide Playwright separately.
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const source = await readFile(new URL('../viewer/excel_freeze.mbt', import.meta.url), 'utf8');
-const install = source.split('extern "js" fn install_excel_freeze')[1]
-  .split('\n\n///|')[0].split('\n')
-  .filter(line => /^\s*#\|/.test(line))
-  .map(line => line.replace(/^\s*#\| ?/, '')).join('\n');
+import { runtime } from './browser-runtime.mjs';
 const styles = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
 let browser;
 
@@ -49,7 +45,8 @@ async function setup(options, metadata) {
     host.__officeLayoutAnnotations = () => window.scrollCalls++;
     host.__officeViewerCleanup = () => window.previousCleanupCalls++;
   });
-  await page.evaluate(script => (0, eval)(`(${script})`)('sheets'), install);
+  await page.addScriptTag({ content: runtime });
+  await page.evaluate(() => window.officeTest.freeze('sheets'));
   return page;
 }
 
@@ -206,7 +203,7 @@ test('zero or malformed freeze settings leave data cells scrollable', async t =>
 test('reinstall removes old listeners and viewer cleanup stops scroll callbacks', async t => {
   const page = await setup();
   t.after(() => page.close());
-  await page.evaluate(script => (0, eval)(`(${script})`)('sheets'), install);
+  await page.evaluate(() => window.officeTest.freeze('sheets'));
   assert.equal(await page.locator('.office-sheet-viewport').count(), 2);
   await page.evaluate(() => { window.scrollCalls = 0; });
   await scroll(page);
@@ -221,7 +218,7 @@ test('reinstall removes old listeners and viewer cleanup stops scroll callbacks'
 test('ignores unrelated hosts and empty sheets, and gives transparent sticky cells an opaque background', async t => {
   const page = await setup();
   t.after(() => page.close());
-  await page.evaluate(script => {
+  await page.evaluate(() => {
     const host = document.getElementById('sheets');
     const empty = document.createElement('section');
     empty.dataset.sheet = 'Empty';
@@ -231,11 +228,11 @@ test('ignores unrelated hosts and empty sheets, and gives transparent sticky cel
     unrelated.id = 'unrelated';
     unrelated.innerHTML = '<section data-sheet="Unrelated"><table><tr><td>Unrelated content</td></tr></table></section>';
     document.body.appendChild(unrelated);
-    const install = (0, eval)(`(${script})`);
+    const install = window.officeTest.freeze;
     install('missing');
     install('unrelated');
     install('sheets');
-  }, install);
+  });
   assert.equal(await page.locator('#unrelated .office-sheet-viewport').count(), 0);
   assert.equal(await page.locator('section[data-sheet="Empty"] .office-sheet-viewport').count(), 0);
   assert.equal(await page.locator('#sheets .office-sheet-viewport').count(), 2);

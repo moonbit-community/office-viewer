@@ -4,6 +4,11 @@ A read-only document viewer built with MoonBit and Rabbita. Office Viewer
 provides standalone DOCX, XLSX, and PDF previews and a reusable browser surface
 with structured selections for host applications and agents.
 
+DOCX/XLSX interaction state, UI construction, source mapping, and selection
+logic live in MoonBit, using Rabbita's typed DOM interfaces and small browser
+bindings. See the [browser runtime](docs/browser-runtime.md) for the boundaries
+and verification workflow.
+
 [Live demo](https://moonbit-community.github.io/office-viewer/)
 
 ## Supported formats
