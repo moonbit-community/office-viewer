@@ -22,23 +22,23 @@ pub extend SelectionMaterializationMode with Eq::{equal, not_equal}
 /// reference and never emit per-item anchors.
 pub(all) struct SelectionMaterializationOptions {
   mode : SelectionMaterializationMode
-  max_preview_utf16 : Int
-  max_source_anchors : Int
+  max_preview_utf16 : Int32
+  max_source_anchors : Int32
 } derive(Eq)
 
 ///|
 pub extend SelectionMaterializationOptions with Eq::{equal, not_equal}
 
 ///|
-pub let default_selection_preview_utf16 : Int = 1000
+pub let default_selection_preview_utf16 : Int32 = 1000
 
 ///|
-pub let default_selection_source_anchors : Int = 64
+pub let default_selection_source_anchors : Int32 = 64
 
 ///|
 priv struct SelectionCell {
-  row : Int?
-  column : Int?
+  row : Int32?
+  column : Int32?
   text : String
 }
 
@@ -52,7 +52,7 @@ priv struct CanonicalSelection {
   anchors : Array[Json]
   source_anchors : Array[Json]
   selectors : Array[String]
-  pages : Array[Int]
+  pages : Array[Int32]
   cells : Array[SelectionCell]
   sheet : String?
   range : String?
@@ -68,7 +68,7 @@ fn json_string(value : Json?) -> String? {
 }
 
 ///|
-fn json_int(value : Json?) -> Int? {
+fn json_int(value : Json?) -> Int32? {
   match value {
     Some(Json::Number(number, ..)) => Some(number.to_int())
     _ => None
@@ -93,7 +93,7 @@ fn json_array(value : Json?) -> Array[Json] {
 }
 
 ///|
-fn json_number(value : Int) -> Json {
+fn json_number(value : Int32) -> Json {
   Json::number(value.to_double(), repr=value.to_string())
 }
 
@@ -220,8 +220,8 @@ fn parse_cells(value : Json?) -> Array[SelectionCell] {
 fn cells_text(cells : Array[SelectionCell]) -> String {
   let output = StringBuilder()
   let mut has_cell = false
-  let mut previous_row : Int? = None
-  let mut previous_column : Int? = None
+  let mut previous_row : Int32? = None
+  let mut previous_column : Int32? = None
   for cell in cells {
     match (previous_row, cell.row) {
       (Some(previous), Some(row)) if previous == row => {
@@ -247,8 +247,8 @@ fn cells_text(cells : Array[SelectionCell]) -> String {
 }
 
 ///|
-fn parse_pages(value : Json?) -> Array[Int] {
-  let output : Array[Int] = []
+fn parse_pages(value : Json?) -> Array[Int32] {
+  let output : Array[Int32] = []
   for page in json_array(value) {
     match page {
       Json::Number(value, ..) => output.push(value.to_int())
@@ -436,7 +436,7 @@ fn parse_selection(
 }
 
 ///|
-fn safe_prefix(text : String, limit : Int) -> String {
+fn safe_prefix(text : String, limit : Int32) -> String {
   if limit <= 0 {
     return ""
   }
@@ -445,7 +445,7 @@ fn safe_prefix(text : String, limit : Int) -> String {
 }
 
 ///|
-fn safe_suffix(text : String, limit : Int) -> String {
+fn safe_suffix(text : String, limit : Int32) -> String {
   if limit <= 0 {
     return ""
   }
@@ -461,7 +461,7 @@ fn safe_suffix(text : String, limit : Int) -> String {
 }
 
 ///|
-fn bounded_preview(text : String, limit : Int) -> (String, Int, Int) {
+fn bounded_preview(text : String, limit : Int32) -> (String, Int32, Int32) {
   let head_limit = limit / 2
   let tail_limit = limit - head_limit
   let head = safe_prefix(text, head_limit)
@@ -776,7 +776,7 @@ pub fn materialize_selection_full(
 /// UTF-16 code units and excludes the `[ ... ]` marker inserted between sides.
 pub fn materialize_selection_preview(
   selection_json : String,
-  max_preview_utf16 : Int,
+  max_preview_utf16 : Int32,
 ) -> Result[String, String] {
   materialize_selection(selection_json, {
     mode: Preview,

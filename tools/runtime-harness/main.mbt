@@ -40,4 +40,13 @@ fn main {
       @browser.annotation_avatar(@json.parse(value) catch { _ => Json::null() })
     },
   )
+  expose_zoom_controls(
+    @browser.configure_fit_width, @browser.install_pinch_zoom,
+  )
 }
+
+///|
+extern "js" fn expose_zoom_controls(
+  fit : (String, String, Bool, (Int32) -> Unit) -> Unit,
+  pinch : (String, String, Int32, Int32, (Int32) -> Unit) -> Unit,
+) = "(fit, pinch) => { globalThis.officeTest.fit = fit; globalThis.officeTest.pinch = pinch; }"

@@ -122,6 +122,8 @@ fn SurfaceRuntime::dispose(self : SurfaceRuntime) -> Unit {
     return
   }
   self.alive = false
+  dispose_fit_width(self.id)
+  call_hook(self.host, "__officeViewerZoomCleanup")
   self.pointer = None
   if self.layout_frame is Some(frame) {
     @dom.window().cancel_animation_frame(frame)
@@ -247,7 +249,9 @@ pub fn install_surface_interactions(
 
 ///|
 pub fn dispose_surface_interactions(id : String) -> Unit {
+  dispose_fit_width(id)
   if @dom.document().get_element_by_id(id).to_option() is Some(host) {
+    call_hook(host, "__officeViewerZoomCleanup")
     call_hook(host, "__officeViewerCleanup")
   }
   if surfaces.get(id) is Some(runtime) {

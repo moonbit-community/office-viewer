@@ -18,7 +18,7 @@ fn tool_button(
   name : String,
   title : String,
   action : @rabbita.Cmd,
-  disabled? : Bool = false,
+  disabled~ : Bool = false,
 ) -> Html {
   button(
     class="button icon",
@@ -258,7 +258,7 @@ fn annotation_array(value : Json, key : String) -> Array[Json] {
 }
 
 ///|
-fn annotation_count(model : Model) -> Int {
+fn annotation_count(model : Model) -> Int32 {
   annotation_array(model.annotations, "items").length()
 }
 
@@ -591,17 +591,32 @@ fn view(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
           on_click=emit(ToggleSystemFonts),
           "Aa",
         ),
+        button(
+          class=if model.fit_width {
+            "button icon active"
+          } else {
+            "button icon"
+          },
+          hidden=model.kind == Some(Pdf),
+          disabled=model.kind is None || model.loading,
+          title="Fit page width",
+          attrs=@html.Attrs::build()
+            .aria_label("Fit page width")
+            .aria_pressed(model.fit_width.to_string()),
+          on_click=emit(FitWidth),
+          [icon("wrap-text")],
+        ),
         div(class="zoom-control", [
           tool_button(
             "zoom-out",
             "Zoom out",
             emit(ZoomChanged((model.zoom - 10).to_string())),
-            disabled=model.zoom <= 25,
+            disabled=model.zoom <= 10,
           ),
           input(
             input_type=Range,
             id="zoom-input",
-            min=25,
+            min=10,
             max=300,
             step=5,
             value=model.zoom.to_string(),

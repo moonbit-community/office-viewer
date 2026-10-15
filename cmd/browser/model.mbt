@@ -17,7 +17,7 @@ struct LoadedDocument {
   name : String
   file : String
   surface_html : String
-  item_count : Int
+  item_count : Int32
   warning : String
   annotations : Json
 } derive(Eq)
@@ -28,28 +28,29 @@ struct Model {
   file_name : String
   document_file : String
   surface_html : String
-  item_count : Int
+  item_count : Int32
   warning : String
   status : String
-  zoom : Int
+  zoom : Int32
+  fit_width : Bool
   query : String
   selection : String
   inspector_open : Bool
   annotations : Json
   comments_open : Bool
   copying_annotations : Bool
-  annotations_copy_request : Int
+  annotations_copy_request : Int32
   annotations_copy_status : String
   prefer_system_fonts : Bool
   loading : Bool
-  generation : Int
+  generation : Int32
   selection_mode : @viewer.SelectionMaterializationMode
   resolved_selection : String
   resolving : Bool
-  page : Int
-  rotation : Int
-  search_current : Int
-  search_total : Int
+  page : Int32
+  rotation : Int32
+  search_current : Int32
+  search_total : Int32
   password_required : Bool
   password : String
   password_incorrect : Bool
@@ -66,6 +67,7 @@ fn initial_model() -> Model {
     warning: "",
     status: "No document loaded.",
     zoom: 100,
+    fit_width: false,
     query: "",
     selection: "",
     inspector_open: false,
@@ -94,17 +96,18 @@ fn initial_model() -> Model {
 enum Msg {
   OpenRequested
   FileSelected
-  FileReady(Int, FilePayload?)
+  FileReady(Int32, FilePayload?)
   DropRequested(@dom.DragEvent)
-  DropReady(Int, FilePayload?)
+  DropReady(Int32, FilePayload?)
   ZoomChanged(String)
+  WidthFitted(Int32, Int32)
   SearchChanged(String)
   SelectionChanged(String)
-  PdfSelectionChanged(Int, String)
-  PdfStateChanged(Int, String)
+  PdfSelectionChanged(Int32, String)
+  PdfStateChanged(Int32, String)
   SelectionModeChanged(@viewer.SelectionMaterializationMode)
   ResolveSelection
-  SelectionResolved(Int, String, Result[String, String])
+  SelectionResolved(Int32, String, Result[String, String])
   PageChanged(String)
   RotatePdf
   FitWidth
@@ -120,7 +123,7 @@ enum Msg {
   AnnotationSelected(Bool)
   AnnotationFocused(Bool)
   CopyAnnotations
-  AnnotationsCopied(Int, Bool)
+  AnnotationsCopied(Int32, Bool)
   CopySelection
   ClearSelection
 }

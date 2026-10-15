@@ -16,7 +16,7 @@ pub fn load_pdf_command(
   bytes : Bytes,
   on_selection : (String) -> @rabbita.Cmd,
   on_state : (String) -> @rabbita.Cmd,
-  runtime_url? : String = "./pdf-runtime.js",
+  runtime_url~ : String = "./pdf-runtime.js",
 ) -> @rabbita.Cmd {
   @cmd.custom_cmd(
     scheduler => {
@@ -61,7 +61,7 @@ pub async fn pdf_document_info(
 }
 
 ///|
-pub fn pdf_page_command(surface_id : String, page : Int) -> @rabbita.Cmd {
+pub fn pdf_page_command(surface_id : String, page : Int32) -> @rabbita.Cmd {
   @cmd.custom_cmd(
     _ => pdf_control(surface_id, "page", page.to_string()),
     kind=@cmd.after_render,
@@ -71,7 +71,7 @@ pub fn pdf_page_command(surface_id : String, page : Int) -> @rabbita.Cmd {
 ///|
 pub fn pdf_rotation_command(
   surface_id : String,
-  rotation : Int,
+  rotation : Int32,
 ) -> @rabbita.Cmd {
   @cmd.custom_cmd(
     _ => pdf_control(surface_id, "rotation", rotation.to_string()),
@@ -122,7 +122,7 @@ extern "js" fn mount_pdf(
   surface_id : String,
   file : String,
   bytes : Bytes,
-  zoom : Int,
+  zoom : Int32,
   query : String,
   runtime_url : String,
   on_selection : (String) -> Unit,
@@ -155,7 +155,7 @@ extern "js" fn mount_pdf(
 #cfg(target="js")
 extern "js" fn apply_pdf_visual(
   surface_id : String,
-  zoom : Int,
+  zoom : Int32,
   query : String,
 ) =
   #| (id, zoom, query) => document.getElementById(id)?.__officeViewerPdf?.apply(zoom, query)
