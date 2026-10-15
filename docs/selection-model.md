@@ -88,7 +88,7 @@ matching `office.mbt`'s selector parser.
 ## Annotation-body selections
 
 Comments and Notes are separate selectable content, not document text or a cell
-value. Clicking **Select comment** selects the complete available body; dragging
+value. Clicking **Quote comment** selects the complete available body; dragging
 within one contextual comment body selects just that substring. Both paths use
 `kind: "annotation"` in the existing envelope:
 
