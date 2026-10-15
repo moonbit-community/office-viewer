@@ -26,9 +26,9 @@ fn annotation_selection_reference(annotation : Json) -> Json {
 /// `scope` is `whole` (default) or `text`; whole-body spans must cover the body.
 pub fn annotation_selection(
   annotation : Json,
-  start_utf16? : Int = 0,
-  end_utf16? : Int,
-  scope? : String = "whole",
+  start_utf16~ : Int32 = 0,
+  end_utf16? : Int32,
+  scope~ : String = "whole",
 ) -> Result[Json, String] {
   let fields = match annotation {
     Json::Object(fields) => fields

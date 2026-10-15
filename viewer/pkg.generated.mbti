@@ -19,6 +19,8 @@ pub fn dispose_interactions_command(String) -> @cmd.Cmd
 
 pub fn document_kind(String) -> DocumentKind?
 
+pub fn fit_width_command(SurfaceConfig, (Int) -> @cmd.Cmd, enabled? : Bool) -> @cmd.Cmd
+
 pub fn focus_annotation_command(String, Json, on_result? : (Bool) -> @cmd.Cmd) -> @cmd.Cmd
 
 pub fn interactions_command(SurfaceConfig, (String) -> @cmd.Cmd) -> @cmd.Cmd
@@ -46,6 +48,8 @@ pub fn pdf_password_command(String, String) -> @cmd.Cmd
 pub fn pdf_rotation_command(String, Int) -> @cmd.Cmd
 
 pub fn pdf_surface_html() -> String
+
+pub fn pinch_zoom_command(SurfaceConfig, (Int) -> @cmd.Cmd, min_zoom? : Int, max_zoom? : Int) -> @cmd.Cmd
 
 pub fn read_annotations(String, String, Bytes) -> Result[Json, String]
 

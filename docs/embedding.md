@@ -182,3 +182,18 @@ sessions and unique ids.
 PDF document JavaScript, XFA, and editing are disabled. PDF annotations use
 the read-only display layer; external links open in a separate tab. OCR and
 inferred table/paragraph extraction are outside the current PDF surface.
+
+## Fit to the available width
+
+Call `fit_width_command(config, on_zoom)` after mounting a DOCX or XLSX
+surface. It measures the page or active sheet and the available host width,
+including padding and the current comment gutter. Resize observers keep the
+page fitted when its panel or gutter changes size. The callback reports the
+integer percentage for the host toolbar and state; preserve that percentage
+in `SurfaceConfig.zoom`. Fitting caps enlargement at 100%.
+
+After explicit zoom or a pinch gesture, call the same command with
+`enabled=false` to retain the user's scale. Re-enable it when Fit width is
+chosen. Disposal removes pending frames and observers. DOCX defaults to fitting
+in the standalone viewer; XLSX stays at 100% unless the user requests fitting.
+PDF retains its PDF.js `pdf_fit_width_command` and scale state events.

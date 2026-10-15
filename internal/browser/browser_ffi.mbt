@@ -17,6 +17,31 @@ extern "js" fn computed_style(node : @dom.Element, name : String) -> String = "(
 extern "js" fn browser_number(value : String) -> Double = "value => Number(value)"
 
 ///|
+extern "js" fn css_pixels(value : String) -> Double = "value => parseFloat(value) || 0"
+
+///|
+extern "js" fn pdf_current_zoom(host : @dom.Element) -> @js.Nullable[Double] =
+  #| host => {
+  #|   const session = host.__officeViewerPdf;
+  #|   return session?.alive && session.doc && session.viewer.pagesCount ? session.viewer.currentScale * 100 : null;
+  #| }
+
+///|
+extern "js" fn pdf_zoom_at(
+  host : @dom.Element,
+  zoom : Int32,
+  x : Double,
+  y : Double,
+) =
+  #| (host, zoom, x, y) => {
+  #|   const viewer = host.__officeViewerPdf?.viewer;
+  #|   if (!viewer?.pagesCount) return;
+  #|   const bounds = viewer.container.getBoundingClientRect(), [top, left] = viewer.containerTopLeft;
+  #|   viewer.updateScale({ scaleFactor: zoom / (viewer.currentScale * 100),
+  #|     origin: [x - bounds.left + left, y - bounds.top + top], drawingDelay: 120 });
+  #| }
+
+///|
 extern "js" fn get_boolean(node : @dom.Element, name : String) -> Bool = "(node, name) => !!node[name]"
 
 ///|

@@ -1,13 +1,28 @@
 ///|
 fn surface_command(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Cmd {
-  @viewer.interactions_command(surface_config(model), selection => {
-    emit(SelectionChanged(selection))
-  })
+  @rabbita.batch([
+    @viewer.interactions_command(surface_config(model), selection => {
+      emit(SelectionChanged(selection))
+    }),
+    @viewer.pinch_zoom_command(
+      surface_config(model),
+      zoom => emit(ZoomChanged(zoom.to_string())),
+      min_zoom=10,
+      max_zoom=300,
+    ),
+  ])
 }
 
 ///|
-fn visual_command(model : Model) -> @rabbita.Cmd {
-  @viewer.visual_command(surface_config(model))
+fn visual_command(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Cmd {
+  @rabbita.batch([
+    @viewer.visual_command(surface_config(model)),
+    @viewer.fit_width_command(
+      surface_config(model),
+      zoom => emit(WidthFitted(model.generation, zoom)),
+      enabled=model.fit_width,
+    ),
+  ])
 }
 
 ///|
@@ -48,7 +63,7 @@ fn selection_output(model : Model) -> String {
 ///|
 fn file_ready(
   model : Model,
-  generation : Int,
+  generation : Int32,
   payload : FilePayload?,
   emit : @rabbita.Emit[Msg],
 ) -> (Model, @rabbita.Cmd) {
@@ -70,6 +85,8 @@ fn file_ready(
       let next = {
         ..model,
         kind: Some(document.kind),
+        fit_width: document.kind == Word,
+        zoom: 100,
         file_name: document.name,
         document_file: document.file,
         surface_html: document.surface_html,
@@ -96,7 +113,7 @@ fn file_ready(
           state => emit(PdfStateChanged(generation, state)),
         )
       } else {
-        @rabbita.batch([surface_command(next, emit), visual_command(next)])
+        @rabbita.batch([surface_command(next, emit), visual_command(next, emit)])
       }
       (next, command)
     }
@@ -231,12 +248,22 @@ fn update(
     }
     ZoomChanged(raw) => {
       let zoom = @string.parse_int(raw) catch { _ => model.zoom }
-      let next = { ..model, zoom: zoom.clamp(min=25, max=300), }
-      (next, visual_command(next))
+      let next = {
+        ..model,
+        zoom: zoom.clamp(min=10, max=300),
+        fit_width: false,
+      }
+      (next, visual_command(next, emit))
     }
+    WidthFitted(generation, zoom) =>
+      if generation == model.generation && model.fit_width {
+        ({ ..model, zoom, }, @rabbita.none)
+      } else {
+        (model, @rabbita.none)
+      }
     SearchChanged(query) => {
       let next = { ..model, query, search_current: 0, search_total: 0, }
-      (next, visual_command(next))
+      (next, visual_command(next, emit))
     }
     SelectionChanged(selection) =>
       (capture_selection(model, selection), @rabbita.none)
@@ -307,7 +334,13 @@ fn update(
           (model.rotation + 90) % 360,
         ),
       )
-    FitWidth => (model, @viewer.pdf_fit_width_command("document-surface"))
+    FitWidth =>
+      if model.kind == Some(Pdf) {
+        (model, @viewer.pdf_fit_width_command("document-surface"))
+      } else {
+        let next = { ..model, fit_width: true, }
+        (next, visual_command(next, emit))
+      }
     FindPdf(previous) =>
       (model, @viewer.pdf_find_command("document-surface", previous))
     PasswordChanged(password) => ({ ..model, password, }, @rabbita.none)
@@ -333,7 +366,7 @@ fn update(
       )
     ToggleSystemFonts => {
       let next = { ..model, prefer_system_fonts: !model.prefer_system_fonts, }
-      (next, visual_command(next))
+      (next, visual_command(next, emit))
     }
     ToggleInspector =>
       (

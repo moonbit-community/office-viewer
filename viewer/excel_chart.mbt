@@ -3,22 +3,22 @@
 /// xlsx2html deliberately leaves as placeholders. It consumes the same
 /// reader-owned chart XML and cell ranges as office.mbt's inspect package, so
 /// the viewer does not invent a second workbook model.
-let viewer_chart_width : Int = 640
+let viewer_chart_width : Int32 = 640
 
 ///|
-let viewer_chart_height : Int = 360
+let viewer_chart_height : Int32 = 360
 
 ///|
-let viewer_plot_left : Int = 54
+let viewer_plot_left : Int32 = 54
 
 ///|
-let viewer_plot_top : Int = 30
+let viewer_plot_top : Int32 = 30
 
 ///|
-let viewer_plot_width : Int = 548
+let viewer_plot_width : Int32 = 548
 
 ///|
-let viewer_plot_height : Int = 250
+let viewer_plot_height : Int32 = 250
 
 ///|
 let viewer_chart_palette : Array[String] = [
@@ -44,8 +44,8 @@ priv struct ViewerChartSeries {
 /// Find a plot block in document order. `inspect.chart_kinds` intentionally
 /// returns a stable set order; the viewer needs the XML order to know which
 /// series belongs to a bar, line, or area layer.
-fn viewer_plot_block(xml : String, from : Int) -> (String, Int, Int)? {
-  let candidates : Array[(Int, String)] = []
+fn viewer_plot_block(xml : String, from : Int32) -> (String, Int32, Int32)? {
+  let candidates : Array[(Int32, String)] = []
   for kind in ["barChart", "lineChart", "areaChart"] {
     let open = "<c:" + kind
     match xml[from:].find(open) {
@@ -80,7 +80,7 @@ fn viewer_plot_block(xml : String, from : Int) -> (String, Int, Int)? {
 }
 
 ///|
-fn viewer_count_tag(block : String, tag : String) -> Int {
+fn viewer_count_tag(block : String, tag : String) -> Int32 {
   let open = "<c:" + tag
   let mut from = 0
   let mut count = 0
@@ -294,7 +294,7 @@ fn viewer_svg_num(value : Double) -> String {
 }
 
 ///|
-fn viewer_chart_point_count(series : Array[ViewerChartSeries]) -> Int {
+fn viewer_chart_point_count(series : Array[ViewerChartSeries]) -> Int32 {
   let mut count = 0
   for entry in series {
     if entry.values.length() > count {
@@ -313,7 +313,7 @@ fn viewer_chart_scale_y(value : Double, low : Double, high : Double) -> Double {
 }
 
 ///|
-fn viewer_chart_colour(entry : ViewerChartSeries, index : Int) -> String {
+fn viewer_chart_colour(entry : ViewerChartSeries, index : Int32) -> String {
   match entry.kind {
     "lineChart" =>
       if index == 0 {

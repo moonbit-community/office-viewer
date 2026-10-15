@@ -4,8 +4,8 @@
 // `find` and formatting APIs define them.
 priv struct WordSourceRun {
   path : String
-  start_utf16 : Int
-  end_utf16 : Int
+  start_utf16 : Int32
+  end_utf16 : Int32
   text : String
 }
 
@@ -45,8 +45,8 @@ priv struct WordVisualSource {
   paragraph_anchor_status : String
   actionable : Bool
   reason : String
-  start_utf16 : Int
-  end_utf16 : Int
+  start_utf16 : Int32
+  end_utf16 : Int32
   runs : Array[String]
 }
 
@@ -82,7 +82,7 @@ fn source_join_paths(paths : Array[String]) -> String {
 // Keep UTF-16 slicing in one place. `substring` preserves a reader/layout
 // offset even when an input document contains an unusual surrogate boundary.
 #warnings("-deprecated")
-fn source_slice(text : String, start : Int, end : Int) -> String {
+fn source_slice(text : String, start : Int32, end : Int32) -> String {
   text.substring(start~, end~)
 }
 
@@ -101,8 +101,8 @@ fn source_selector(
 ///|
 fn direct_body_paragraphs(
   document : @document.DocumentElement,
-) -> Array[(@document.DocumentElement, Int)] {
-  let output : Array[(@document.DocumentElement, Int)] = []
+) -> Array[(@document.DocumentElement, Int32)] {
+  let output : Array[(@document.DocumentElement, Int32)] = []
   match document {
     @document.DocumentElement::Document(children~, ..) => {
       let mut ordinal = 0
@@ -297,8 +297,8 @@ fn build_word_source_index_annotated(
 ///|
 fn overlapping_source_runs(
   paragraph : WordSourceParagraph,
-  start : Int,
-  end : Int,
+  start : Int32,
+  end : Int32,
 ) -> Array[String] {
   let output : Array[String] = []
   for run in paragraph.runs {

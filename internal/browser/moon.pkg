@@ -3,6 +3,7 @@ import {
   "moonbit-community/rabbita/js",
   "moonbitlang/core/json",
   "moonbitlang/core/double",
+  "moonbitlang/core/math",
 }
 
 supported_targets = "js"
