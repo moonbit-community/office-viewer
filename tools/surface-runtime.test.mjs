@@ -104,6 +104,17 @@ test('Word drags emit their selection after pointer release', async t => {
   await source.dispatchEvent('pointerup', { button: 0, isPrimary: true, pointerId: 7 });
   assert.equal(await page.evaluate(() => window.events.length), 1);
   assert.equal(await page.evaluate(() => window.events[0].text), 'Selected');
+  // Browsers can queue this task until after pointerup has settled the drag.
+  await page.evaluate(() => document.dispatchEvent(new Event('selectionchange')));
+  await page.waitForTimeout(50);
+  assert.equal(await page.evaluate(() => window.events.length), 1);
+  await selectText(page, '#source', 0, '#source', 14);
+  assert.equal(await page.evaluate(() => window.events.length), 2);
+  assert.equal(await page.evaluate(() => window.events.at(-1).text), 'Selected words');
+  // A new pointer gesture can intentionally select the same range again.
+  await source.dispatchEvent('pointerdown', { button: 0, isPrimary: true, pointerId: 8 });
+  await source.dispatchEvent('pointerup', { button: 0, isPrimary: true, pointerId: 8 });
+  assert.equal(await page.evaluate(() => window.events.length), 3);
 });
 
 test('incomplete or mismatched Word source spans never become logical anchors', async t => {

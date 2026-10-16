@@ -63,6 +63,7 @@ priv struct SurfaceRuntime {
   bodies : Array[(@dom.Element, Annotation)]
   mut alive : Bool
   mut pointer : SurfacePointer?
+  mut word_selection_payload : String?
   mut selected_annotation : String?
   mut visible_count : Int32
   mut rail : @dom.Element?
@@ -183,6 +184,7 @@ pub fn install_surface_interactions(
     bodies: [],
     alive: true,
     pointer: None,
+    word_selection_payload: None,
     selected_annotation: None,
     visible_count: 0,
     rail: None,

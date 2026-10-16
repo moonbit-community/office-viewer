@@ -168,7 +168,7 @@ upstream font data:
 ```sh
 moon run --target native ./pagelayout/cmd/pagelayout -- \
   export-fonts ../office-viewer/public/fonts
-node scripts/prepare-fonts.mjs public/fonts
+node ../office-viewer/scripts/prepare-fonts.mjs ../office-viewer/public/fonts
 ```
 
 PDF fonts, CMaps, and images are handled by PDF.js. Embedded fonts come from

@@ -106,6 +106,7 @@ class PdfSession {
     this.abort = new AbortController();
     this.selectionRevision = 0;
     this.selectionPointer = null;
+    this.selectionCancelled = false;
     this.bus = new EventBus();
     this.links = new PDFLinkService({ eventBus: this.bus,
       externalLinkTarget: LinkTarget.BLANK, externalLinkRel: "noopener noreferrer nofollow" });
@@ -136,7 +137,7 @@ class PdfSession {
     const schedule = () => {
       clearTimeout(this.selectionTimer);
       this.selectionRevision++;
-      if (this.selectionPointer !== null) return;
+      if (!this.alive || this.selectionCancelled || this.selectionPointer !== null) return;
       this.selectionTimer = setTimeout(() => this.capture().catch(error => {
         if (this.alive) this.state({ status: "selection-error", message: error.message });
       }), 90);
@@ -144,6 +145,7 @@ class PdfSession {
     document.addEventListener("selectionchange", schedule, { signal: this.abort.signal });
     host.addEventListener("pointerdown", event => {
       if (event.button !== 0 || event.isPrimary === false) return;
+      this.selectionCancelled = false;
       this.selectionPointer = event.pointerId;
       clearTimeout(this.selectionTimer);
       this.selectionRevision++;
@@ -157,8 +159,12 @@ class PdfSession {
     document.addEventListener("pointercancel", event => {
       if (this.selectionPointer === null || this.selectionPointer !== event.pointerId) return;
       this.selectionPointer = null;
+      this.selectionCancelled = true;
       clearTimeout(this.selectionTimer);
       this.selectionRevision++;
+    }, { signal: this.abort.signal });
+    host.addEventListener("keydown", () => {
+      this.selectionCancelled = false;
     }, { signal: this.abort.signal });
     host.addEventListener("keyup", schedule, { signal: this.abort.signal });
     // PDFViewer observes container height, but its embedding host must refit
@@ -242,7 +248,7 @@ class PdfSession {
   }
 
   async capture() {
-    if (this.selectionPointer !== null) return;
+    if (this.selectionCancelled || this.selectionPointer !== null) return;
     const selection = window.getSelection();
     if (!this.doc || !selection?.rangeCount || selection.isCollapsed || !selection.toString().trim()) return;
     const range = selection.getRangeAt(0).cloneRange();
