@@ -31,6 +31,12 @@ snapshot. Explicit disposal removes the listeners, observers, callback hooks,
 and registry entry. Font-readiness callbacks check whether that snapshot is
 still active before applying layout.
 
+The optional `public/page-thumbnails.js` module owns the reusable Word/PDF
+thumbnail list. MoonBit exports its render, update and disposal commands; the
+module handles native SVG cloning, asynchronous PDF.js canvas jobs, caching and
+page navigation. It does not inspect a host's panel layout or import host code.
+Document teardown cancels the module before replacing its rendering source.
+
 ## Verification
 
 `npm run test:browser` first compiles `tools/runtime-harness`, which exposes the

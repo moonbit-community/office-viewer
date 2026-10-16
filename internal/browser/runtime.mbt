@@ -123,6 +123,7 @@ fn SurfaceRuntime::dispose(self : SurfaceRuntime) -> Unit {
     return
   }
   self.alive = false
+  call_hook(self.host, "__officeViewerPageThumbnailsCleanup")
   dispose_fit_width(self.id)
   call_hook(self.host, "__officeViewerZoomCleanup")
   self.pointer = None
@@ -253,6 +254,7 @@ pub fn install_surface_interactions(
 pub fn dispose_surface_interactions(id : String) -> Unit {
   dispose_fit_width(id)
   if @dom.document().get_element_by_id(id).to_option() is Some(host) {
+    call_hook(host, "__officeViewerPageThumbnailsCleanup")
     call_hook(host, "__officeViewerZoomCleanup")
     call_hook(host, "__officeViewerCleanup")
   }

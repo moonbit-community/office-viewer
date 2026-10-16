@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.2.2 (unreleased)
+## 0.2.3 (unreleased)
+
+- Add a reusable Word/PDF page-thumbnail list with lazy rendering, bounded
+  caching, scrolling synchronization, click and keyboard navigation, and
+  cancellation on document replacement or disposal. Hosts retain their own
+  toolbar, labels, container layout and open/closed state.
+
+## 0.2.2
 
 - Preserve Word selections until pointer release and keep comments attached to
   proven body paragraphs when tables or running headers/footers prevent a

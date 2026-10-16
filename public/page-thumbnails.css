@@ -1,0 +1,65 @@
+/* Shared thumbnail content; hosts style and position the surrounding panel. */
+.office-page-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 4px 8px 12px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.office-page-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--office-pages-text, #667085);
+  background: transparent;
+  cursor: pointer;
+  text-align: start;
+}
+.office-page-item:hover { background: var(--office-pages-hover, #f2f4f7); }
+.office-page-item[aria-current="page"] {
+  color: var(--office-pages-accent, #2563eb);
+  background: var(--office-pages-selected, #e8efff);
+}
+.office-page-item:focus-visible {
+  outline: 2px solid var(--office-pages-accent, #2563eb);
+  outline-offset: -2px;
+}
+.office-page-number {
+  min-width: 14px;
+  padding-top: 3px;
+  text-align: center;
+  font-size: var(--office-pages-font-size, 13px);
+  font-variant-numeric: tabular-nums;
+}
+.office-page-paper {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  aspect-ratio: 595 / 842;
+  border: 1px solid rgb(15 23 42 / 10%);
+  border-radius: 5px;
+  background: #fff;
+  color: #667085;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 12%);
+  font-size: 10px;
+  pointer-events: none;
+}
+.office-page-paper :is(svg, canvas) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.office-page-paper svg text {
+  font-kerning: none;
+  font-variant-ligatures: none;
+  letter-spacing: 0;
+  white-space: pre;
+}
