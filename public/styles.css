@@ -1,3 +1,5 @@
+@import url("./page-thumbnails.css");
+
 /* These files are generated from pagelayout/fontoutlines. The SVG layout
    measures the same faces, so the browser must not fall back to a system
    font for the document surface. */

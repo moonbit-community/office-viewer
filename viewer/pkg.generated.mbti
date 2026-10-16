@@ -17,6 +17,8 @@ pub let default_selection_source_anchors : Int
 
 pub fn dispose_interactions_command(String) -> @cmd.Cmd
 
+pub fn dispose_page_thumbnails_command(String) -> @cmd.Cmd
+
 pub fn document_kind(String) -> DocumentKind?
 
 pub fn fit_width_command(String, DocumentKind?, (Int) -> @cmd.Cmd, enabled? : Bool) -> @cmd.Cmd
@@ -34,6 +36,8 @@ pub fn materialize_selection_deferred(String) -> Result[String, String]
 pub fn materialize_selection_full(String) -> Result[String, String]
 
 pub fn materialize_selection_preview(String, Int) -> Result[String, String]
+
+pub fn page_thumbnails_command(SurfaceConfig, String, enabled? : Bool, runtime_url? : String) -> @cmd.Cmd
 
 pub async fn pdf_document_info(String) -> Result[String, String] noraise
 
@@ -54,6 +58,8 @@ pub fn pinch_zoom_command(SurfaceConfig, (Int) -> @cmd.Cmd, min_zoom? : Int, max
 pub fn read_annotations(String, String, Bytes) -> Result[Json, String]
 
 pub fn render_document(String, String, Bytes, max_rows? : Int, max_cols? : Int) -> Result[RenderedDocument, String]
+
+pub fn render_page_thumbnails(String, page_label? : String, unavailable_label? : String) -> @html.Html
 
 pub fn render_surface(SurfaceConfig) -> @html.Html
 

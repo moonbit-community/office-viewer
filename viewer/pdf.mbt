@@ -137,6 +137,7 @@ extern "js" fn mount_pdf(
   #|   host.__officeViewerPdfRuntime = runtime;
   #|   host.__officeViewerCleanup = () => {
   #|     cancelled = true;
+  #|     host.__officeViewerPageThumbnailsCleanup?.();
   #|     session?.destroy();
   #|     host.__officeViewerPdf = null;
   #|     host.__officeViewerPdfRuntime = null;

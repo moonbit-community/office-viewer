@@ -1,5 +1,8 @@
 import {
   "moonbit-community/office-viewer/internal/browser",
+  "moonbit-community/office-viewer/viewer",
+  "moonbit-community/rabbita",
+  "moonbit-community/rabbita/html",
   "moonbit-community/rabbita/dom",
   "moonbitlang/core/json",
 }

@@ -83,6 +83,37 @@ path, identity, information dictionary, XMP metadata, outline, and permissions
 reported by PDF.js. Call it after the document is ready. The demo currently
 exposes page navigation rather than an outline sidebar.
 
+## Word and PDF page thumbnails
+
+Render `render_page_thumbnails("page-list", page_label="Page {page}",
+unavailable_label="Preview unavailable")` beside the document surface. Keep
+its node mounted: the viewer owns only the list's children. The host owns the
+surrounding panel, heading/page count, toolbar and open/closed state.
+
+After mounting Word interactions, or receiving a PDF `ready` event, return
+`page_thumbnails_command(config, "page-list", enabled=panel_open)`. Calling it
+again updates visibility and the Word font preference without replacing the
+live document. Labels follow later renders. The list supports click, arrow
+keys, Home and End, highlights the current page, and scrolls that highlight
+into its own viewport without moving the host window.
+
+Serve `public/page-thumbnails.js` at `./page-thumbnails.js`, or pass a
+`runtime_url` to the command. Include `public/page-thumbnails.css` (already
+imported by the standalone stylesheet). Its optional `--office-pages-text`,
+`--office-pages-hover`, `--office-pages-accent`, `--office-pages-selected` and
+`--office-pages-font-size` properties let a host supply its theme. Panel width,
+placement and responsive breakpoints are host policy and are not measured by
+the thumbnail component.
+
+Word thumbnails clone the actual paginated SVG with isolated definition IDs
+and the selected font family. PDF thumbnails use separate small PDF.js
+canvases, with two concurrent jobs and up to 24 cached previews. Only nearby
+pages are rendered. Rotating a PDF or changing Word font mode invalidates
+previews. Disabling the list cancels pending work; replacing or disposing the
+document retires listeners, observers, requests and canvases automatically.
+Call `dispose_page_thumbnails_command(surface_id)` before independently
+removing the list while keeping the document mounted. Excel has no page list.
+
 ## Materialization and resolution
 
 After receiving selection JSON, choose an explicit context policy:

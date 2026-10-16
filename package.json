@@ -10,7 +10,7 @@
     "playwright": "1.60.0"
   },
   "scripts": {
-    "test:browser": "moon build --target js tools/runtime-harness && node --experimental-vm-modules --test scripts/fonts.test.mjs tools/pdf-runtime.test.mjs tools/excel-freeze.test.mjs tools/annotation-gutter.test.mjs tools/annotation-avatars.test.mjs tools/surface-runtime.test.mjs tools/fit-width.test.mjs",
+    "test:browser": "moon build --target js tools/runtime-harness && node --experimental-vm-modules --test scripts/fonts.test.mjs tools/pdf-runtime.test.mjs tools/excel-freeze.test.mjs tools/annotation-gutter.test.mjs tools/annotation-avatars.test.mjs tools/surface-runtime.test.mjs tools/fit-width.test.mjs tools/page-thumbnails.test.mjs",
     "build:pages": "bash scripts/build-pages.sh",
     "test:annotation-avatars": "moon build --target js tools/runtime-harness && node --test tools/annotation-avatars.test.mjs"
   }

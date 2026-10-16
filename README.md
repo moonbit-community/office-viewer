@@ -143,6 +143,12 @@ Notes outside the preview remain available in the annotation list.
 See [rendering support](docs/rendering-support.md) for version boundaries and
 known limitations.
 
+Word and PDF hosts can add the reusable page-thumbnail list through
+`render_page_thumbnails` and `page_thumbnails_command`. Rendering, lazy caching,
+current-page synchronization and navigation belong to the viewer; the host
+chooses its panel layout and whether it starts open. See the
+[embedding guide](docs/embedding.md#word-and-pdf-page-thumbnails).
+
 ## Font policy
 
 The document surface uses the same bundled font programs as the pagelayout
