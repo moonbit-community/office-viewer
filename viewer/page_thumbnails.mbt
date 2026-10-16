@@ -85,6 +85,7 @@ extern "js" fn install_page_thumbnails(
   #|     }
   #|   }).catch(() => {
   #|     if (host.__officeViewerPageThumbnailsRequest === request && target.isConnected) {
+  #|       host.__officeViewerPageThumbnails?.dispose();
   #|       target.textContent = target.dataset.unavailableLabel;
   #|     }
   #|   });

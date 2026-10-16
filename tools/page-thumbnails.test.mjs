@@ -15,7 +15,7 @@ async function setup(t, kind='word') {
   t.after(() => page.close());
   await page.route('http://viewer.test/**', route => {
     const path = new URL(route.request().url()).pathname;
-    route.fulfill({contentType:path.endsWith('.js')?'text/javascript':'text/html',body:path.endsWith('.js')?module:`<style>${css} .layout{display:flex;height:700px} #gallery{width:180px;flex:none} #document{width:600px;height:700px;overflow:auto} .word-page{background:white;margin:20px}</style><div class="layout"><div id="gallery" class="office-page-list" data-page-label="Chapter {page}" data-unavailable-label="Unavailable"></div><div id="document"></div></div>`});
+    route.fulfill({contentType:path.endsWith('.js')?'text/javascript':'text/html',body:path.endsWith('.js')?module:`<style>${css} .layout{display:flex;height:700px} #gallery{width:180px;flex:none} #document{width:600px;height:700px;overflow:auto} .word-page{background:white;margin:20px}</style><div class="layout"><div id="gallery" class="office-page-list" data-page-label="Chapter {page}" data-unavailable-label="Unavailable"></div><div id="document"></div></div><div id="thumbnail-test-controls"></div>`});
   });
   await page.goto('http://viewer.test/');
   await page.addScriptTag({content:runtime});
@@ -100,4 +100,25 @@ test('a collapsed thumbnail list does not render pages until its host enables it
   await page.evaluate(()=>mountPages(true));
   await painted(page,1);
   assert.equal(await page.locator('#gallery button').count(),6);
+});
+
+
+test('public commands dispose on import failure without letting an older failure retire a newer request',async t=>{
+  const page = await setup(t);
+  let receive;
+  const requested = new Promise(resolve=>{receive=resolve;});
+  await page.route('http://viewer.test/delayed-missing.js',route=>receive(route));
+  await page.route('http://viewer.test/missing-thumbnails.js',route=>route.fulfill({status:404,body:'Missing runtime'}));
+  await page.getByRole('button',{name:'Mount thumbnail API',exact:true}).click();
+  await painted(page,1);
+  await page.getByRole('button',{name:'Delay thumbnail import',exact:true}).click();
+  const delayed = await requested;
+  await page.getByRole('button',{name:'Mount thumbnail API',exact:true}).click();
+  await delayed.fulfill({status:404,body:'Retired runtime'});
+  await frame(page);
+  assert.equal(await page.locator('#gallery button').count(),6,'stale import failures preserve the current navigator');
+  assert.equal(await page.locator('#replacement-list').textContent(),'');
+  await page.getByRole('button',{name:'Fail thumbnail import',exact:true}).click();
+  await page.waitForFunction(()=>document.getElementById('replacement-list').textContent==='Preview unavailable');
+  assert.equal(await page.locator('#gallery button').count(),0,'a current failure retires the previous navigator');
 });

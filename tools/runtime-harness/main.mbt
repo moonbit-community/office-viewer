@@ -43,6 +43,48 @@ fn main {
   expose_zoom_controls(
     @browser.configure_fit_width, @browser.install_pinch_zoom,
   )
+  if @dom.document().get_element_by_id("thumbnail-test-controls").to_option()
+    is Some(_) {
+    @rabbita.elmish(
+      model=0,
+      update=(count, request : (String, String), _) => {
+        let config : @viewer.SurfaceConfig = {
+          surface_id: "document",
+          kind: Some(Word),
+          document_file: "/demo.docx",
+          surface_html: "",
+          zoom: 100,
+          query: "",
+          prefer_system_fonts: false,
+        }
+        (
+          count + 1,
+          @viewer.page_thumbnails_command(
+            config,
+            request.0,
+            runtime_url=request.1,
+          ),
+        )
+      },
+      view=(_, emit) => {
+        @html.div([
+          @html.button(
+            on_click=emit(("gallery", "./page-thumbnails.js")),
+            "Mount thumbnail API",
+          ),
+          @html.button(
+            on_click=emit(("replacement-list", "./missing-thumbnails.js")),
+            "Fail thumbnail import",
+          ),
+          @html.button(
+            on_click=emit(("replacement-list", "./delayed-missing.js")),
+            "Delay thumbnail import",
+          ),
+          @viewer.render_page_thumbnails("replacement-list"),
+        ])
+      },
+    ).mount("thumbnail-test-controls")
+  }
 }
 
 ///|
