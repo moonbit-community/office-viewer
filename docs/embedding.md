@@ -108,8 +108,11 @@ The upstream `pagelayout/svg` backend has no OOXML source map. The viewer adds
 one only where its annotated-reader paragraph/run projection joins the rendered
 text exactly. Otherwise Word selection retains its physical page/fragment
 range with `stability: "physical-only"` and omits a canonical selector. The same
-fail-closed join governs contextual comment placement; paragraph context is
-never claimed to be the exact commented character range.
+fail-closed join governs contextual comment placement. A proven body-paragraph
+prefix can remain as comment context when a later unsupported block prevents
+a complete join. This context carries no logical selectors, offsets or
+actionability, and is never claimed to be the exact commented character range.
+Running headers and footers are excluded from body-paragraph matching.
 
 ## Selecting comments and Notes
 

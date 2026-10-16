@@ -22,6 +22,8 @@ import {
 
 import {
   "moonbitlang/mbtexcel/demos",
+  "moonbitlang/docx2html/opc",
+  "moonbitlang/core/encoding/utf8",
 } for "wbtest"
 
 import {

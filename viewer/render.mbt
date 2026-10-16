@@ -379,7 +379,22 @@ pub fn render_document(
         }
         let annotations = bind_annotation_snapshot(annotations, bytes)
         let pages = match index {
-          Some(index) => decorate_word_pages(rendered_pages, model, index)
+          Some(index) => {
+            let furniture = document.furniture
+            // Running headers and footers are appended after body items.
+            // Source paragraph matching must only consume the body model.
+            let body_model = if furniture.header.is_empty() &&
+              furniture.footer.is_empty() &&
+              furniture.first_header.is_empty() &&
+              furniture.first_footer.is_empty() &&
+              furniture.even_header.is_empty() &&
+              furniture.even_footer.is_empty() {
+              model
+            } else {
+              @paginate.paginate(document.blocks, section=document.section)
+            }
+            decorate_word_pages(rendered_pages, body_model, index)
+          }
           None => rendered_pages
         }
         Ok({

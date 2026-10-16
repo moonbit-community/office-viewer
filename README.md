@@ -150,6 +150,9 @@ metrics. They are exported into `public/fonts` from `pagelayout/fontoutlines`
 and loaded with `@font-face`, so a browser fallback cannot change the fixed SVG
 character positions. The bundled Carlito, Liberation, and Noto Sans SC files
 are distributed under the license notices in `public/fonts/LICENSES`.
+`scripts/prepare-fonts.mjs` adds browser naming and checksum metadata while
+preserving glyphs and metrics. Modified internal names and the changes are
+recorded in `public/fonts/LICENSES/MODIFICATIONS.md`.
 
 System fonts remain an explicit local enhancement. The `Aa` button switches
 the browser's glyph source to installed Calibri/Arial/Times New Roman/Courier
@@ -165,6 +168,7 @@ upstream font data:
 ```sh
 moon run --target native ./pagelayout/cmd/pagelayout -- \
   export-fonts ../office-viewer/public/fonts
+node ../office-viewer/scripts/prepare-fonts.mjs ../office-viewer/public/fonts
 ```
 
 PDF fonts, CMaps, and images are handled by PDF.js. Embedded fonts come from

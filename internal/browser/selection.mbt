@@ -81,16 +81,19 @@ fn SurfaceRuntime::word_selection(self : SurfaceRuntime) -> Unit {
   }
   guard native_selection().to_option() is Some(selection) else { return }
   if selection_count(selection) != 1 {
+    self.word_selection_payload = None
     return
   }
   let selected_text = selection_text(selection)
   if selected_text.trim().is_empty() {
+    self.word_selection_payload = None
     return
   }
   let range = selection_range(selection)
   let start_node = range_node(range, true)
   let end_node = range_node(range, false)
   if !self.host.contains(start_node) || !self.host.contains(end_node) {
+    self.word_selection_payload = None
     return
   }
   let start_page = node_element(start_node).bind(node => {
@@ -287,17 +290,22 @@ fn SurfaceRuntime::word_selection(self : SurfaceRuntime) -> Unit {
     }
   })
   pages.sort_by(compare_top)
-  self.emit(
-    Json::object({
-      "schema": Json::string("office.selection.v1"),
-      "file": Json::string(self.document_file),
-      "format": Json::string(if self.kind == "word" { "docx" } else { "xlsx" }),
-      "kind": Json::string("word"),
-      "text": Json::string(selected_text),
-      "anchors": Json::array(anchors.map(anchor => Json::object(anchor.fields))),
-      "pages": Json::array(pages.map(number)),
-    }),
-  )
+  let payload = Json::object({
+    "schema": Json::string("office.selection.v1"),
+    "file": Json::string(self.document_file),
+    "format": Json::string(if self.kind == "word" { "docx" } else { "xlsx" }),
+    "kind": Json::string("word"),
+    "text": Json::string(selected_text),
+    "anchors": Json::array(anchors.map(anchor => Json::object(anchor.fields))),
+    "pages": Json::array(pages.map(number)),
+  }).stringify(indent=2)
+  // A native selectionchange task may arrive after pointerup has already
+  // emitted this range. Keep keyboard changes, but notify each range once.
+  if self.word_selection_payload != Some(payload) {
+    self.word_selection_payload = Some(payload)
+    self.clear_context()
+    (self.on_selection)(payload)
+  }
 }
 
 ///|
@@ -334,6 +342,7 @@ fn SurfaceRuntime::install_selection(self : SurfaceRuntime) -> Unit {
       ignore(self.select_cells(cell, cell))
     } else if target.closest(".word-page") is Some(_) {
       self.clear_context()
+      self.word_selection_payload = None
       self.pointer = Some(WordPointer)
     }
   })
@@ -384,7 +393,9 @@ fn SurfaceRuntime::install_selection(self : SurfaceRuntime) -> Unit {
     self.cancel_pointer()
   })
   self.listen(@dom.document().as_event_target(), "selectionchange", _ => {
-    if !self.annotation_selection() && self.kind == "word" {
+    if self.pointer is None &&
+      !self.annotation_selection() &&
+      self.kind == "word" {
       self.word_selection()
     }
   })

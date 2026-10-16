@@ -30,6 +30,10 @@ priv struct WordSourceParagraph {
 ///|
 priv struct WordSourceIndex {
   paragraphs : Array[WordSourceParagraph]
+  // Stop before an unsupported body block, even if its rendered text happens
+  // to match a later direct paragraph. Matching text alone cannot prove that
+  // a table cell belongs to that paragraph.
+  prefix_length : Int32
 }
 
 ///|
@@ -138,12 +142,10 @@ fn direct_run_entries(
             let path = "\{paragraph_path}/r[\{ordinal}]"
             let text = child.to_raw_text()
             let end = offset + text.length()
-            // Empty runs (including comment-reference runs) carry no text.
-            // Keep their ordinal in subsequent paths, but compare only
-            // text-carrying runs with the reader's full-text match.
-            if text != "" {
-              output.push({ path, start_utf16: offset, end_utf16: end, text, })
-            }
+            // The reader includes interior comment-reference runs in a full
+            // paragraph match. Preserve their canonical paths and zero-length
+            // boundaries; they never become selectable visual text.
+            output.push({ path, start_utf16: offset, end_utf16: end, text, })
             offset = end
           }
           // A hyperlink or another wrapper changes the canonical ancestry.
@@ -238,8 +240,14 @@ fn source_paragraph(
         // Keep only a one-to-one run-path agreement with the parsed tree;
         // otherwise a partial/flattened construct remains physical-only.
         let reader_runs = hit.runs()
-        if reader_runs == parsed_runs.map(run => run.path) {
-          parsed_runs
+        let matched_runs = parsed_runs.filter(run => {
+          reader_runs.contains(run.path)
+        })
+        if reader_runs == matched_runs.map(run => run.path) &&
+          parsed_runs.all(run => {
+            run.text == "" || reader_runs.contains(run.path)
+          }) {
+          matched_runs
         } else {
           []
         }
@@ -288,7 +296,21 @@ fn build_word_source_index_annotated(
         source_paragraph(annotated, story, paragraph, path, Some(anchor_index)),
       )
     }
-    Some({ paragraphs: output, })
+    let prefix_length = match document {
+      @document.DocumentElement::Document(children~, ..) => {
+        let mut count = 0
+        for child in children {
+          if child is @document.DocumentElement::Paragraph(..) {
+            count += 1
+          } else {
+            break
+          }
+        }
+        count
+      }
+      _ => 0
+    }
+    Some({ paragraphs: output, prefix_length, })
   } catch {
     _ => None
   }
@@ -310,7 +332,15 @@ fn overlapping_source_runs(
 }
 
 ///|
-fn source_fragment_attrs(source : WordVisualSource) -> String {
+fn source_fragment_attrs(
+  source : WordVisualSource,
+  context_only~ : Bool = false,
+) -> String {
+  let context = "data-comment-part=\"\{source_xml_escape(source.part)}\" " +
+    "data-comment-path=\"\{source_xml_escape(source.path)}\""
+  if context_only {
+    return context
+  }
   let base = "data-source-id=\"docx\" " +
     "data-source-part=\"\{source_xml_escape(source.part)}\" " +
     "data-source-path=\"\{source_xml_escape(source.path)}\" " +
@@ -326,13 +356,14 @@ fn source_fragment_attrs(source : WordVisualSource) -> String {
     Some(id) => " data-source-para-id=\"\{source_xml_escape(id)}\""
     None => ""
   }
-  base + suffix
+  context + " " + base + suffix
 }
 
 ///|
 fn decorate_svg_text(
   svg : String,
   metadata : Array[WordVisualSource?],
+  context_only~ : Bool = false,
 ) -> String {
   let output = StringBuilder()
   let mut cursor = 0
@@ -349,7 +380,7 @@ fn decorate_svg_text(
         output.write_string(source_slice(svg, cursor, start + 6))
         match metadata.get(metadata_index) {
           Some(Some(source)) => {
-            output.write_string(source_fragment_attrs(source))
+            output.write_string(source_fragment_attrs(source, context_only~))
             output.write_char(' ')
           }
           _ => ()
@@ -390,7 +421,7 @@ fn decorate_word_pages(
             None
           } else {
             skip_empty_paragraphs()
-            if paragraph_index >= index.paragraphs.length() {
+            if paragraph_index >= index.prefix_length {
               join_broken = true
               None
             } else {
@@ -442,11 +473,14 @@ fn decorate_word_pages(
   }
   // A complete join must consume every source paragraph and every visual text
   // fragment. Any trailing reader paragraph or hidden/layout-only text makes
-  // the map unsafe, so discard all metadata for this render.
+  // the semantic range map unsafe. Keep the proven prefix only as paragraph
+  // context for comments; it carries no selectors, offsets or actionability.
   skip_empty_paragraphs()
   if join_broken || paragraph_index != index.paragraphs.length() {
-    for page in pages {
-      output.push(decorate_svg_text(page, []))
+    for page_index, page in pages {
+      output.push(
+        decorate_svg_text(page, metadata_by_page[page_index], context_only=true),
+      )
     }
     return output
   }
