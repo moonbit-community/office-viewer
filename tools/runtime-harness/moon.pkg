@@ -1,5 +1,5 @@
 import {
-  "moonbit-community/office-viewer/internal/browser",
+  "Lampese/office-viewer/internal/browser",
   "moonbit-community/rabbita/dom",
   "moonbitlang/core/json",
 }

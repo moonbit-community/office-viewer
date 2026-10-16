@@ -1,4 +1,4 @@
-name = "moonbit-community/office-viewer"
+name = "Lampese/office-viewer"
 
 version = "0.2.3"
 
