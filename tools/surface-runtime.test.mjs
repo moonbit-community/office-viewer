@@ -95,6 +95,17 @@ test('native Word selection preserves UTF-16 logical anchors and physical fallba
   assert.equal('selector' in physical, false); assert.equal('path' in physical, false);
 });
 
+test('Word drags emit their selection after pointer release', async t => {
+  const page = await setup(t, word(paragraph('Selected words', 'id="source"')));
+  const source = page.locator('#source');
+  await source.dispatchEvent('pointerdown', { button: 0, isPrimary: true, pointerId: 7 });
+  await selectText(page, '#source', 0, '#source', 8);
+  assert.deepEqual(await page.evaluate(() => window.events), []);
+  await source.dispatchEvent('pointerup', { button: 0, isPrimary: true, pointerId: 7 });
+  assert.equal(await page.evaluate(() => window.events.length), 1);
+  assert.equal(await page.evaluate(() => window.events[0].text), 'Selected');
+});
+
 test('incomplete or mismatched Word source spans never become logical anchors', async t => {
   for (const attrs of ['data-source-end="5"', 'data-source-start="0" data-source-end="999"']) {
     const page = await setup(t, word(paragraph('Hello', `id="source" data-source-selector="/docx/body/p[1]" ${attrs}`)));

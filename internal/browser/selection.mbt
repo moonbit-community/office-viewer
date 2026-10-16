@@ -384,7 +384,9 @@ fn SurfaceRuntime::install_selection(self : SurfaceRuntime) -> Unit {
     self.cancel_pointer()
   })
   self.listen(@dom.document().as_event_target(), "selectionchange", _ => {
-    if !self.annotation_selection() && self.kind == "word" {
+    if self.pointer is None &&
+      !self.annotation_selection() &&
+      self.kind == "word" {
       self.word_selection()
     }
   })

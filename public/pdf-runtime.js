@@ -105,6 +105,7 @@ class PdfSession {
     this.pages = new Map();
     this.abort = new AbortController();
     this.selectionRevision = 0;
+    this.selectionPointer = null;
     this.bus = new EventBus();
     this.links = new PDFLinkService({ eventBus: this.bus,
       externalLinkTarget: LinkTarget.BLANK, externalLinkRel: "noopener noreferrer nofollow" });
@@ -135,13 +136,44 @@ class PdfSession {
     const schedule = () => {
       clearTimeout(this.selectionTimer);
       this.selectionRevision++;
+      if (this.selectionPointer !== null) return;
       this.selectionTimer = setTimeout(() => this.capture().catch(error => {
         if (this.alive) this.state({ status: "selection-error", message: error.message });
       }), 90);
     };
     document.addEventListener("selectionchange", schedule, { signal: this.abort.signal });
-    host.addEventListener("pointerup", schedule, { signal: this.abort.signal });
+    host.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || event.isPrimary === false) return;
+      this.selectionPointer = event.pointerId;
+      clearTimeout(this.selectionTimer);
+      this.selectionRevision++;
+    }, { signal: this.abort.signal });
+    // Release outside the surface must settle the drag as well.
+    document.addEventListener("pointerup", event => {
+      if (this.selectionPointer === null || this.selectionPointer !== event.pointerId) return;
+      this.selectionPointer = null;
+      schedule();
+    }, { signal: this.abort.signal });
+    document.addEventListener("pointercancel", event => {
+      if (this.selectionPointer === null || this.selectionPointer !== event.pointerId) return;
+      this.selectionPointer = null;
+      clearTimeout(this.selectionTimer);
+      this.selectionRevision++;
+    }, { signal: this.abort.signal });
     host.addEventListener("keyup", schedule, { signal: this.abort.signal });
+    // PDFViewer observes container height, but its embedding host must refit
+    // scale presets and update visible pages when panel animations resize it.
+    this.resizeObserver = new ResizeObserver(() => {
+      if (!this.alive || this.resizeFrame != null) return;
+      this.resizeFrame = requestAnimationFrame(() => {
+        this.resizeFrame = null;
+        if (!this.alive || !this.doc || !this.viewer.pagesCount || container.clientWidth <= 40) return;
+        const scale = this.viewer.currentScaleValue;
+        if (scale && Number.isNaN(Number(scale))) this.viewer.currentScaleValue = scale;
+        this.viewer.update();
+      });
+    });
+    this.resizeObserver.observe(container);
   }
 
   state(value) {
@@ -210,6 +242,7 @@ class PdfSession {
   }
 
   async capture() {
+    if (this.selectionPointer !== null) return;
     const selection = window.getSelection();
     if (!this.doc || !selection?.rangeCount || selection.isCollapsed || !selection.toString().trim()) return;
     const range = selection.getRangeAt(0).cloneRange();
@@ -342,6 +375,9 @@ class PdfSession {
 
   destroy() {
     this.alive = false;
+    this.resizeObserver.disconnect();
+    if (this.resizeFrame != null) cancelAnimationFrame(this.resizeFrame);
+    this.resizeFrame = null;
     clearTimeout(this.selectionTimer);
     this.selectionRevision++;
     this.viewer.setDocument(null);

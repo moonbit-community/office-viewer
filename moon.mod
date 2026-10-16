@@ -1,6 +1,6 @@
 name = "moonbit-community/office-viewer"
 
-version = "0.2.1"
+version = "0.2.2"
 
 import {
   "moonbit-community/rabbita@0.16.3",
@@ -11,6 +11,10 @@ import {
 }
 
 license = "Apache-2.0"
+
+readme = "README.md"
+
+repository = "https://github.com/moonbit-community/office-viewer"
 
 description = "A read-only DOCX, XLSX, and PDF viewer with structured selections."
 
