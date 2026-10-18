@@ -111,3 +111,17 @@ test('inactive sheets release their cell nodes and Notes navigate into an unload
   assert.equal(await page.locator('[data-excel-value]').textContent(),'BEYOND_256');
   assert.equal(await page.locator('section[data-sheet="Other"] td').count(),0);
 });
+
+test('clearing an older feedback selection preserves a newer pointer gesture while Escape cancels it',async t=>{
+  const page=await setup(t);
+  await search(page,'BEYOND_1000');
+  const cell=await page.locator('td[data-cell="A1200"]').boundingBox();
+  await page.mouse.move(cell.x+cell.width/2,cell.y+cell.height/2);
+  await page.mouse.down();
+  await page.evaluate(()=>officeTest.clear('document'));
+  await page.mouse.up();
+  assert.equal(await page.evaluate(()=>events.at(-1).range),'A1200');
+  const before=await page.evaluate(()=>events.length);
+  await page.mouse.down();await page.keyboard.press('Escape');await page.mouse.up();
+  assert.equal(await page.evaluate(()=>events.length),before);
+});
