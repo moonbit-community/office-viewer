@@ -56,8 +56,7 @@ jobs:
       - name: Check and test
         run: |
           moon check --target js
-          moon test --target js -p moonbit-community/office-viewer/viewer
-          moon test --target js -p moonbit-community/office-viewer/cmd/browser
+          moon test --target js
       - name: Test browser interactions in Chromium
         run: |
           npx --no-install playwright install --with-deps chromium
