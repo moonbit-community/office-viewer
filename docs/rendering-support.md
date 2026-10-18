@@ -1,7 +1,7 @@
 # Rendering support
 
 The viewer uses published docx2html 0.7.0, mbtexcel 0.3.0, and pagelayout 0.8.0.
-This change adds browser freeze handling, configurable Excel preview bounds,
+The viewer provides browser freeze handling, a full-workbook virtual Excel grid,
 and visible DOCX diagnostics using those published APIs. It does not require
 unreleased upstream HTML attributes: frozen pane settings come from the parsed
 workbook in a separate inert JSON block.
@@ -25,10 +25,13 @@ viewer with the upstream source modules without changing release pins.
   border weights and approximates dash-dot variants as dashed lines.
 - The viewer's frozen rows/columns operate within each worksheet scroll area.
   Excel's separately scrollable split-pane UI is not implemented.
-- Preview bounds limit the displayed table, formulas and Notes navigation; they
-  do not stream or virtualize an arbitrarily large workbook. Cropped tables retain
-  the renderer's visible truncation message. Notes outside the window remain in
-  annotation data.
+- Large Excel worksheets are virtualized across their full used bounds. The
+  initial-window arguments select the rendering strategy rather than dropping
+  rows or columns. Stored-cell data backs search and range materialization;
+  inactive worksheets and offscreen cells do not accumulate DOM nodes.
+- XLSX reading and display-value preparation are still synchronous and bounded
+  by the reader's resource policy. This is not a streaming XLSX parser.
+
 
 ## Verification
 

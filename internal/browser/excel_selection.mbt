@@ -55,19 +55,31 @@ fn SurfaceRuntime::select_cells(
   self : SurfaceRuntime,
   anchor : @dom.Element,
   active : @dom.Element,
+  anchor_bounds? : CellBounds,
 ) -> CellSelection? {
-  guard anchor.closest("table") is Some(table) &&
-    active.closest("table") is Some(active_table) &&
-    same(table, active_table) else {
-    return None
+  guard active.closest("table") is Some(table) else { return None }
+  if anchor_bounds is None {
+    guard anchor.closest("table") is Some(anchor_table) &&
+      same(table, anchor_table) else {
+      return None
+    }
   }
-  guard cell_bounds(anchor) is Some(a) && cell_bounds(active) is Some(b) else {
+  guard anchor_bounds.otherwise(() => cell_bounds(anchor)) is Some(a) &&
+    cell_bounds(active) is Some(b) else {
     return None
   }
   let top = Int32::min(a.row, b.row)
   let bottom = Int32::max(a.row_end, b.row_end)
   let left = Int32::min(a.col, b.col)
   let right = Int32::max(a.col_end, b.col_end)
+  if self.lazy_sheets.get(attr(active, "data-sheet")) is Some(sheet) {
+    sheet.selection = Some({
+      row: top,
+      col: left,
+      row_end: bottom,
+      col_end: right,
+    })
+  }
   let cells : Array[@dom.Element] = []
   clear_cells(table)
   for cell in all(table, "td[data-cell]") {
@@ -101,7 +113,12 @@ fn SurfaceRuntime::excel_selection(
   self : SurfaceRuntime,
   pointer : CellPointer,
 ) -> Unit {
-  guard self.select_cells(pointer.anchor, pointer.active) is Some(selected) &&
+  guard self.select_cells(
+      pointer.anchor,
+      pointer.active,
+      anchor_bounds=pointer.anchor_bounds,
+    )
+    is Some(selected) &&
     !selected.cells.is_empty() else {
     return
   }
@@ -110,15 +127,24 @@ fn SurfaceRuntime::excel_selection(
     .map(section => attr(section, "data-sheet"))
     .unwrap_or(attr(selected.cells[0], "data-sheet"))
   let (start, end, range) = selected_range(selected)
-  let cells = selected.cells.map(cell => {
-    let coordinates = cell_bounds(cell).unwrap()
-    Json::object({
-      "address": Json::string(attr(cell, "data-cell")),
-      "row": number(coordinates.row.to_double()),
-      "column": number(coordinates.col.to_double()),
-      "text": Json::string(text(cell)),
+  let cells = self
+    .lazy_selection_cells(sheet, {
+      row: selected.top,
+      col: selected.left,
+      row_end: selected.bottom,
+      col_end: selected.right,
     })
-  })
+    .unwrap_or_else(() => {
+      selected.cells.map(cell => {
+        let coordinates = cell_bounds(cell).unwrap()
+        Json::object({
+          "address": Json::string(attr(cell, "data-cell")),
+          "row": number(coordinates.row.to_double()),
+          "column": number(coordinates.col.to_double()),
+          "text": Json::string(text(cell)),
+        })
+      })
+    })
   let leaf = if start == end {
     "cell[" + start + "]"
   } else {

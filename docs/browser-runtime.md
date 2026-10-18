@@ -9,9 +9,11 @@ The runtime separates responsibilities by feature:
 
 - `runtime.mbt` owns each mounted surface, event listeners, animation frames,
   callbacks, and disposal.
-- `excel.mbt`, `excel_selection.mbt`, and `excel_freeze.mbt` build worksheet
+- `excel.mbt`, `excel_virtual.mbt`, `excel_selection.mbt`, and `excel_freeze.mbt` build worksheet
   controls, map merged cells, place drawings, manage range selection, and
-  calculate frozen row and column positions.
+  calculate frozen row and column positions. The virtual grid stores sparse cell
+  data, derives full-sheet scroll geometry from sparse axis dimensions, and
+  recycles visible cells while materializing selections from source data.
 - `annotation_model.mbt` validates installed annotation identities and resolves
   reply threads and source context. The annotation view, avatar, layout, and
   styles files build and position the corresponding UI.

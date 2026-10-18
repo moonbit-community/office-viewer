@@ -12,18 +12,8 @@ fn fidelity_json_script(html : String, class_name : String) -> Json raise {
 }
 
 ///|
-test "render preview bounds reject invalid and overflowing dimensions before reading bytes" {
-  for
-    (rows, columns) in [
-      (0, 1),
-      (1, 0),
-      (-1, 1),
-      (1, -1),
-      (262145, 1),
-      (1, 262145),
-      (1025, 256),
-      (2147483647, 2147483647),
-    ] {
+test "render initial window dimensions must be positive" {
+  for (rows, columns) in [(0, 1), (1, 0), (-1, 1), (1, -1)] {
     match
       render_document(
         "bounds.xlsx",
@@ -32,19 +22,26 @@ test "render preview bounds reject invalid and overflowing dimensions before rea
         max_rows=rows,
         max_cols=columns,
       ) {
-      Err(message) => assert_true(message.contains("Preview bounds"))
+      Err(message) => assert_true(message.contains("bounds must be positive"))
       Ok(_) => fail("Invalid bounds accepted")
     }
   }
 }
 
 ///|
-test "render preview bounds accept the exact cell budget and defaults" {
+test "render initial windows accept large thresholds without truncating the workbook" {
   let workbook = @mbtexcel.new_workbook()
   ignore(workbook.add_sheet("Data"))
   workbook.set_cell_int("Data", "A1", 42)
   let bytes = @mbtexcel.write(workbook)
-  for (rows, columns) in [(262144, 1), (1, 262144), (1024, 256), (1000, 256)] {
+  for
+    (rows, columns) in [
+      (262144, 1),
+      (1, 262144),
+      (1024, 256),
+      (1000, 256),
+      (2147483647, 2147483647),
+    ] {
     match
       render_document(
         "bounds.xlsx",
@@ -164,7 +161,7 @@ test "render_document exposes actual DOCX parser warnings while preserving reada
 }
 
 ///|
-test "custom Excel bounds agree across visible cells formulas and Notes anchors" {
+test "Excel window bounds retain all cells formulas and Notes anchors" {
   let workbook = @mbtexcel.new_workbook()
   ignore(workbook.add_sheet("Data"))
   for (cell, value) in [("A1", 11), ("B2", 22), ("C2", 32), ("B3", 23)] {
@@ -186,27 +183,38 @@ test "custom Excel bounds agree across visible cells formulas and Notes anchors"
   match
     render_document("notes.xlsx", "/notes.xlsx", bytes, max_rows=2, max_cols=2) {
     Ok(rendered) => {
-      assert_true(rendered.surface_html.contains(">22</td>"))
-      assert_false(rendered.surface_html.contains(">33</td>"))
-      assert_false(rendered.surface_html.contains(">44</td>"))
-      let formulas = annotation_test_field(
-        annotation_test_field(
-          fidelity_json_script(rendered.surface_html, "office-formula-metadata"),
-          "sheets",
-        ),
+      let model = fidelity_json_script(
+        rendered.surface_html,
+        "office-virtual-workbook",
+      )
+      let data = annotation_test_field(
+        annotation_test_field(model, "sheets"),
         "Data",
       )
-      assert_eq(annotation_test_field(formulas, "B2"), Json::string("A1*2"))
-      assert_eq(annotation_test_field(formulas, "C2"), Json::null())
-      assert_eq(annotation_test_field(formulas, "B3"), Json::null())
+      let cells = json_array(Some(annotation_test_field(data, "cells")))
+      assert_true(
+        cells.any(cell => {
+          cell is Array([Number(2, ..), Number(2, ..), String("22"), ..])
+        }),
+      )
+      assert_true(
+        cells.any(cell => {
+          cell is Array([Number(2, ..), Number(3, ..), String("33"), ..])
+        }),
+      )
+      assert_true(
+        cells.any(cell => {
+          cell is Array([Number(3, ..), Number(2, ..), String("44"), ..])
+        }),
+      )
       let support = annotation_test_field(rendered.annotations, "support")
       assert_eq(
         annotation_test_field(support, "preview_max_rows"),
-        json_number(2),
+        json_number(1048576),
       )
       assert_eq(
         annotation_test_field(support, "preview_max_columns"),
-        json_number(2),
+        json_number(16384),
       )
       let items = json_array(
         Some(annotation_test_field(rendered.annotations, "items")),
@@ -214,13 +222,7 @@ test "custom Excel bounds agree across visible cells formulas and Notes anchors"
       assert_eq(items.length(), 4)
       for item in items {
         let anchor = annotation_test_field(item, "anchor")
-        let cell = annotation_test_field(anchor, "cell")
-        let expected = if cell == Json::string("A1") ||
-          cell == Json::string("B2") {
-          "within-preview"
-        } else {
-          "outside-preview"
-        }
+        let expected = "within-preview"
         assert_eq(
           annotation_test_field(anchor, "preview"),
           Json::string(expected),
