@@ -36,9 +36,17 @@ Excel surfaces contain inert `office-freeze-metadata` JSON with a `sheets` map
 of worksheet names to `{ rows, columns }`. `interactions_command` creates each
 worksheet's scroll area and installs sticky frozen cells; `visual_command`
 refreshes their geometry after zoom. Hosts must run both commands as described
-above. `render_document` defaults to `max_rows=1000`, `max_cols=256`; invalid or
-oversized windows return `Err`. These bounds also control formula metadata and
-Notes `within-preview`/`outside-preview` flags. See [rendering support](rendering-support.md).
+above. `render_document` defaults to `max_rows=1000`, `max_cols=256`; these
+positive thresholds choose between static and virtual rendering. They never
+truncate the workbook. A total of 32768 cells also triggers virtualization.
+The virtual surface retains sparse source data, mounts only the active
+worksheet's visible cells, and searches and materializes ranges from the full
+data. Notes anywhere in that worksheet remain navigable. The runtime exposes
+`surface.__officeRevealExcelCell(sheet, row, column)` for hosts that need to
+mount an unloaded citation target before querying its DOM node; a successful
+call has already scrolled it into view, so hosts should not apply a subsequent
+native `scrollIntoView` to the compressed scroll canvas.
+See [rendering support](rendering-support.md).
 
 ## PDF
 

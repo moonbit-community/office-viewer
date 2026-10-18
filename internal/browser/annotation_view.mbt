@@ -169,7 +169,12 @@ fn SurfaceRuntime::render_annotation_cards(self : SurfaceRuntime) -> Unit {
       text="Show source",
     )
     locate.set_attribute("type", "button")
-    set_boolean(locate, "disabled", context.targets.is_empty())
+    set_boolean(
+      locate,
+      "disabled",
+      context.targets.is_empty() &&
+      !self.lazy_sheets.contains(string(field(context_item.anchor, "sheet"))),
+    )
     locate.add_event_listener("click", _ => {
       if card.get_is_connected() {
         ignore(self.show_annotation(context_item, navigate=true))

@@ -128,6 +128,9 @@ pub fn install_excel_freeze(id : String) -> Unit {
   }
   for section in all(host, "section[data-sheet]") {
     guard section.query_selector("table") is Some(table) else { continue }
+    if has_class(table, "office-virtual-table") {
+      continue
+    }
     let viewport = section
       .query_selector(".office-sheet-viewport")
       .unwrap_or_else(() => {

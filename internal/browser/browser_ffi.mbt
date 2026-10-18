@@ -162,3 +162,10 @@ extern "js" fn range_prefix_length(
   #|   try { range.setEnd(node, offset); return range.toString().length; }
   #|   catch (_) { return fallback; }
   #| }
+
+///|
+extern "js" fn excel_reveal_hook(
+  node : @dom.Element,
+  reveal : (String, Int32, Int32) -> Bool,
+) =
+  #| (node, reveal) => { node.__officeRevealExcelCell = reveal; }

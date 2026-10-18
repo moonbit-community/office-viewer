@@ -52,6 +52,9 @@ pub fn prepare_font_runtime(id : String) -> Unit {
 
 ///|
 pub fn apply_search(id : String, query : String) -> Unit {
+  if surfaces.get(id) is Some(runtime) {
+    runtime.search_lazy_excel(query)
+  }
   guard @dom.document().get_element_by_id(id).to_option() is Some(host) else {
     return
   }

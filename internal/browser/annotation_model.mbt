@@ -124,7 +124,7 @@ fn SurfaceRuntime::annotation_context(
     return { item, targets: item.targets, }
   }
   let root = self.thread_root(item)
-  { item: root, targets: if root.id != item.id { root.targets } else { [] }, }
+  { item: root, targets: root.targets, }
 }
 
 ///|
@@ -255,6 +255,13 @@ fn SurfaceRuntime::show_annotation(
   }
   guard self.rail is Some(rail) else { return false }
   set_boolean(rail, "open", true)
+  if navigate && self.kind == "excel" {
+    if lazy_address(string(field(item.anchor, "cell"))) is Some((row, column)) {
+      ignore(
+        self.reveal_lazy_cell(string(field(item.anchor, "sheet")), row, column),
+      )
+    }
+  }
   let context = self.annotation_context(item)
   if context.targets.is_empty() {
     return false
@@ -274,7 +281,7 @@ fn SurfaceRuntime::show_annotation(
     is Some(record) {
     toggle_class(record.card, "office-context-active", true)
   }
-  if navigate {
+  if navigate && !self.lazy_sheets.contains(sheet) {
     context.targets[0].scroll_into_view_with_options(
       block="center",
       inline="center",

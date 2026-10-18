@@ -25,7 +25,13 @@ fn SurfaceRuntime::update_formula_bar(
       }
       Some(cell) => {
         let formula = attr(cell, "data-formula")
-        let value = if formula != "" { "=" + formula } else { text(cell) }
+        let value = if formula != "" {
+          "=" + formula
+        } else if cell.has_attribute("data-office-cell-value") {
+          attr(cell, "data-office-cell-value")
+        } else {
+          text(cell)
+        }
         set_text(node, if value == "" { " " } else { value })
         toggle_class(node, "is-placeholder", false)
       }
@@ -47,6 +53,11 @@ fn SurfaceRuntime::set_excel_sheet(
     let active = attr(section, "data-sheet") == sheet
     toggle_class(section, "is-active", active)
     set_boolean(section, "hidden", !active)
+    if !active {
+      if self.lazy_sheets.get(attr(section, "data-sheet")) is Some(lazy_sheet) {
+        lazy_sheet.body.set_inner_html("")
+      }
+    }
     if active {
       if section.query_selector("table") is Some(table) {
         table.set_scroll_left(0.0)
@@ -62,6 +73,9 @@ fn SurfaceRuntime::set_excel_sheet(
   for cell in all(self.host, "td.office-cell-selected, td.office-cell-active") {
     toggle_class(cell, "office-cell-selected", false)
     toggle_class(cell, "office-cell-active", false)
+  }
+  if self.lazy_sheets.get(sheet) is Some(lazy_sheet) {
+    self.draw_lazy_sheet(lazy_sheet)
   }
   self.update_formula_bar(None, "")
   self.layout_excel_objects()
@@ -84,6 +98,9 @@ fn SurfaceRuntime::prepare_excel(self : SurfaceRuntime) -> Unit {
   for section in all(self.host, "section[data-sheet]") {
     let sheet = attr(section, "data-sheet")
     for table in all(section, "table") {
+      if has_class(table, "office-virtual-table") {
+        continue
+      }
       let occupied : Map[(Int32, Int32), Bool] = Map([])
       for row_index, row_element in all(table, "tr") {
         let mut col = 1
@@ -302,6 +319,10 @@ fn SurfaceRuntime::layout_excel_objects(self : SurfaceRuntime) -> Unit {
     .unwrap_or(1.0)
   let zoom = if finite(zoom) && zoom != 0.0 { zoom } else { 1.0 }
   for section in all(self.host, "section[data-sheet]") {
+    if self.lazy_sheets.get(attr(section, "data-sheet")) is Some(sheet) {
+      self.layout_lazy_objects(sheet)
+      continue
+    }
     let objects = array(field(sheets, attr(section, "data-sheet")))
     guard section.query_selector("table") is Some(table) else { continue }
     let grid = section.query_selector(".office-sheet-grid").unwrap_or(section)
