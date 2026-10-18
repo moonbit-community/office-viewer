@@ -233,6 +233,7 @@ pub fn install_surface_interactions(
     if event.to_keyboard_event() is Some(keyboard) {
       if keyboard.key() == "Escape" {
         runtime.clear_context()
+        runtime.cancel_pointer()
       }
     }
   })
@@ -299,8 +300,12 @@ pub fn select_surface_annotation(id : String, request : String) -> Bool {
 
 ///|
 pub fn clear_surface_selection(id : String) -> Unit {
+  // Clearing a previous feedback draft can run after the next pointerdown.
+  // Retire the old visual snapshot without cancelling that newer gesture.
   if surfaces.get(id) is Some(runtime) {
-    runtime.cancel_pointer()
+    for sheet in runtime.lazy_sheets.values() {
+      sheet.selection = None
+    }
   }
   guard @dom.document().get_element_by_id(id).to_option() is Some(host) else {
     return

@@ -1,6 +1,6 @@
 name = "Lampese/office-viewer"
 
-version = "0.2.4"
+version = "0.2.5"
 
 import {
   "moonbit-community/rabbita@0.16.3",
