@@ -35,5 +35,8 @@ test('production PPTX entry retains native globals, renders slides and navigates
   await page.locator('.pptx-slide text.office-search-hit').waitFor();
   assert.equal(await page.locator('.pptx-slide').count(), 2);
   assert.equal(await page.locator('.pptx-slide image').count(), 2);
+  assert.equal(await page.locator('.office-font-substitutions').count(), 1);
+  assert.match(await page.locator('.office-font-substitutions').textContent(), /Arial/);
+  assert.match(await page.locator('.office-font-substitutions summary').textContent(), /^Font substitutions \(\d+\)$/);
   assert.deepEqual(errors, []);
 });

@@ -70,5 +70,10 @@ test "PowerPoint slides retain text, page boundaries and independent clips" {
   assert_true(document.surface_html.contains("page1-c1"))
   assert_true(document.surface_html.contains("page2-c1"))
   assert_true(document.warning.contains("Arial"))
+  assert_true(document.surface_html.contains("office-font-substitutions"))
+  assert_true(document.surface_html.contains("Font substitutions (1)"))
+  assert_true(
+    document.surface_html.contains(@xlsx2html.escape_html(document.warning)),
+  )
   assert_eq(original, pptx_fixture())
 }
