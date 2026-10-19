@@ -15,12 +15,15 @@ import {
   "moonbitlang/mbtexcel/xlsx",
   "moonbitlang/mbtexcel/xlsx2html",
   "moonbitlang/pagelayout",
+  "moonbitlang/pagelayout/pptx",
+  "moonbitlang/pagelayout/fonts",
   "moonbitlang/pagelayout/docx",
   "moonbitlang/pagelayout/paginate",
   "moonbitlang/pagelayout/svg",
 }
 
 import {
+  "moonbit-community/flate/zip",
   "moonbitlang/mbtexcel/demos",
   "moonbitlang/docx2html/opc",
   "moonbitlang/core/encoding/utf8",

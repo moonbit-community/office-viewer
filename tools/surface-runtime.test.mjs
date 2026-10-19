@@ -322,3 +322,30 @@ test('Excel movement within one cell or outside the grid skips full-table scans'
   assert.equal(events.length, 1);
   assert.equal(events[0].range, 'A3:B3');
 });
+
+test('presentation hairlines stay visible at zoom and device scale without altering source widths', async t => {
+  for (const deviceScaleFactor of [1, 2]) {
+    const page = await browser.newPage({deviceScaleFactor, viewport:{width:1000,height:700}});
+    t.after(() => page.close());
+    await page.setContent(`<style>${styles}</style><div id="document" class="word-surface office-viewer-surface"></div>`);
+    await page.addScriptTag({content:runtime});
+    await page.evaluate(() => {
+      window.officeTest.install('document','pptx','/demo.pptx',
+        '<div class="word-pages pptx-pages"><article class="word-page pptx-slide"><svg width="720" height="405" viewBox="0 0 720 405"><path id="rule" d="M30 50L690 50" fill="none" stroke="#fff" stroke-width="0.35"/><path id="diagonal" d="M30 80L60 100" fill="none" stroke="#fff" stroke-width="0.35"/><text x="30" y="140">Slide text</text></svg></article></div>',()=>{},()=>{});
+      window.officeTest.prepareFonts('document');
+    });
+    for (const zoom of [.5, 1, 2, 4]) {
+      await page.evaluate(zoom => window.officeTest.zoom('document',zoom),zoom);
+      const line = await page.locator('#rule').evaluate(node => ({
+        authored:node.getAttribute('stroke-width'), width:parseFloat(node.style.strokeWidth), scale:node.getScreenCTM().d, ratio:devicePixelRatio,
+      }));
+      assert.equal(line.authored,'0.35');
+      assert.ok(Math.abs(line.width*line.scale*line.ratio-Math.max(.35*line.scale*line.ratio,1))<1e-6);
+    }
+    assert.equal(await page.locator('#diagonal').getAttribute('stroke-width'),'0.35');
+    assert.equal(await page.locator('#diagonal').evaluate(node=>node.style.shapeRendering),'');
+    await page.evaluate(() => window.officeTest.dispose('document'));
+    assert.equal(await page.locator('#document').evaluate(node=>Boolean(node.__officeViewerStrokesCleanup)),false);
+    await page.close();
+  }
+});

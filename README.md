@@ -1,7 +1,7 @@
 # Office Viewer
 
 A read-only document viewer built with MoonBit and Rabbita. Office Viewer
-provides standalone DOCX, XLSX, and PDF previews and a reusable browser surface
+provides standalone DOCX, XLSX, PPTX, and PDF previews and a reusable browser surface
 with structured selections for host applications and agents.
 
 DOCX/XLSX interaction state, UI construction, source mapping, and selection
@@ -17,9 +17,15 @@ and verification workflow.
 | --- | --- | --- |
 | DOCX | `office.mbt` PageModel and paginated SVG | Native text selection with validated paragraph/run references where available |
 | XLSX | `office.mbt` workbook reader and HTML renderer | Cells and rectangular ranges with worksheet names and canonical selectors |
+| PPTX | `office.mbt` static slide PageModel and SVG, including embedded EOT/MTX fonts | Native copying; hosts can attach visual slide regions |
 | PDF | PDF.js canvas, text, and annotation layers | Native text selection with page/item ranges, document identity, geometry, and available tagged structure |
 
-The viewer supports zoom and search. PDF previews also provide page navigation,
+The viewer supports zoom and search. PPTX previews include slide thumbnails,
+fit to width and selectable text. Embedded fonts are measured and drawn from the
+same bytes; explicit replacement warnings identify unavailable fonts. Recognized
+unsupported drawing features produce an error rather than an incomplete slide.
+PowerPoint comments and logical text selectors are not projected.
+PDF previews also provide page navigation,
 fit to width, rotation, and password prompts. Files are read locally in the
 browser; the standalone demo uses a mock file path in its selection metadata.
 Excel previews preserve workbook styles, merged cells, images, charts, and
@@ -30,7 +36,17 @@ unsupported formulas remain visibly marked as pending.
 
 Use the [official MoonBit toolchain](https://www.moonbitlang.com/download)
 `0.10.15+943464bfa` and Node.js 24. Dependencies resolve from the Mooncakes
-registry; sibling checkouts are not required.
+registry for released features. The PPTX branch additionally requires the
+`pagelayout/pptx` renderer from the matching `office.mbt` source branch until its
+next Mooncakes release; use a local `moon.work` to include the `pagelayout` module.
+The renderer is tracked in [office.mbt#654](https://github.com/moonbitlang/office.mbt/pull/654).
+To reproduce this branch before that release, check out
+`Lampese/office.mbt` at `c78a48a8` beside this repository and create an untracked
+`moon.work` with paths relative to your checkouts:
+
+```toml
+members = [".", "../office.mbt/pagelayout"]
+```
 
 ```sh
 moon update
@@ -54,6 +70,7 @@ Open <http://127.0.0.1:4311/>. With Warren installed as above, build the same re
 
 ```sh
 npm run build:pages
+npm run test:production
 ```
 
 The generated `dist/` is ignored by Git; an optional first argument selects a
@@ -64,6 +81,8 @@ asset SHA-256 hashes. It does not regenerate fonts. Run
 `moon run tools/prepare-browser-assets.mbtx` after updating npm dependencies;
 the generated PDF.js worker, CMaps, fonts, codecs, and icon assets are copied
 from `public/vendor/` into the release artifact.
+The production smoke test opens a synthetic PPTX through the minified entry,
+checks slide thumbnails and search, and catches browser-global name collisions.
 
 ## Continuous deployment
 

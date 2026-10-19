@@ -8,6 +8,7 @@ import {
   "moonbitlang/mbtexcel@0.3.0",
   "moonbitlang/pagelayout@0.8.0",
   "moonbitlang/x@0.5.5",
+  "moonbit-community/flate@0.9.0",
 }
 
 license = "Apache-2.0"
@@ -16,6 +17,6 @@ readme = "README.md"
 
 repository = "https://github.com/moonbit-community/office-viewer"
 
-description = "A read-only DOCX, XLSX, and PDF viewer with structured selections."
+description = "A read-only DOCX, XLSX, PPTX, and PDF viewer with structured selections."
 
 preferred_target = "js"
