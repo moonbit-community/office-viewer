@@ -13,7 +13,11 @@ pub fn fit_width_command(
     scheduler => {
       @browser_runtime.configure_fit_width(
         surface_id,
-        surface_kind(kind),
+        if kind == Some(PowerPoint) {
+          "word"
+        } else {
+          surface_kind(kind)
+        },
         enabled,
         zoom => scheduler.add(on_zoom(zoom)),
       )

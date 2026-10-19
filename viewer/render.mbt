@@ -2,6 +2,7 @@
 pub(all) enum DocumentKind {
   Word
   Excel
+  PowerPoint
   Pdf
 } derive(Eq)
 
@@ -32,6 +33,8 @@ pub fn document_kind(name : String) -> DocumentKind? {
     Some(Word)
   } else if lower.has_suffix(".xlsx") {
     Some(Excel)
+  } else if lower.has_suffix(".pptx") {
+    Some(PowerPoint)
   } else if lower.has_suffix(".pdf") {
     Some(Pdf)
   } else {
@@ -336,13 +339,16 @@ pub fn render_document(
   bytes : Bytes,
   max_rows~ : Int32 = 1000,
   max_cols~ : Int32 = 256,
+  fonts? : @fonts.FontRegistry,
+  font_fallbacks~ : Map[String, Array[String]] = {},
 ) -> Result[RenderedDocument, String] {
   if max_rows < 1 || max_cols < 1 {
     return Err("Initial preview bounds must be positive.")
   }
   let kind = match document_kind(name) {
     Some(kind) => kind
-    None => return Err("Only .docx, .xlsx, and .pdf files are supported.")
+    None =>
+      return Err("Only .docx, .xlsx, .pptx, and .pdf files are supported.")
   }
   try {
     match kind {
@@ -483,6 +489,53 @@ pub fn render_document(
           annotations,
           item_count: workbook.get_sheet_list().length(),
           warning: "Excel cells are read-only. Formula results are normalized in the rendering copy when office.mbt can evaluate them; drawing anchors retain their source cell, offsets, and dimensions for browser layout. Cell addresses are derived from the rendered table coordinates and use the canonical office.xlsx selector shape.",
+        })
+      }
+      PowerPoint => {
+        let layout = @pptx.layout_presentation(
+          bytes,
+          fonts?,
+          font_fallbacks~,
+          allow_bundled_fallbacks=true,
+        )
+        let annotations = bind_annotation_snapshot(
+          annotation_envelope(
+            name,
+            file,
+            "pptx",
+            [],
+            Json::object({ "completeness": Json::string("unavailable") }),
+            ["PowerPoint comments are not projected."],
+          ),
+          bytes,
+        )
+        let output = StringBuilder()
+        output.write_string("<div class=\"word-pages pptx-pages\">")
+        for index, part in layout.slide_parts {
+          output.write_string(
+            "<article class=\"word-page pptx-slide\" data-page=\"\{index + 1}\" data-slide-part=\"",
+          )
+          output.write_string(@xlsx2html.escape_html_attribute(part))
+          output.write_string("\">")
+          output.write_string(
+            @svg.render_page(layout.model, index, fonts=layout.fonts),
+          )
+          output.write_string("</article>")
+        }
+        output.write_string("</div>")
+        let warning = if layout.font_substitutions.is_empty() {
+          ""
+        } else {
+          "Font substitutions: " + layout.font_substitutions.join("; ")
+        }
+        Ok({
+          kind,
+          name,
+          file,
+          surface_html: output.to_string(),
+          item_count: layout.model.pages.length(),
+          warning,
+          annotations,
         })
       }
       Pdf =>

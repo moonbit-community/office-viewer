@@ -2,6 +2,7 @@
 pub fn set_surface_zoom(id : String, zoom : Double) -> Unit {
   if @dom.document().get_element_by_id(id).to_option() is Some(host) {
     style(host, "--office-zoom", zoom.to_string())
+    adjust_presentation_strokes(host)
     call_hook(host, "__officeLayoutAnnotations")
   }
 }
@@ -26,6 +27,7 @@ pub fn prepare_font_runtime(id : String) -> Unit {
   guard @dom.document().get_element_by_id(id).to_option() is Some(host) else {
     return
   }
+  prepare_presentation_strokes(host)
   let faces : Array[String] = []
   for
     family in [

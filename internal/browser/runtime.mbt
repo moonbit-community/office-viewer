@@ -212,6 +212,15 @@ pub fn install_surface_interactions(
   set_callback(host, "__officeLayoutObjects", () => {
     runtime.layout_excel_objects()
   })
+  if kind == "pptx" {
+    // Own the same surface lifecycle without emitting Word/Excel selectors for
+    // slide text. Native text copying remains available in the SVG.
+    runtime.cleanups.push(() => call_hook(host, "__officeViewerStrokesCleanup"))
+    runtime.cleanups.push(() => {
+      call_hook(host, "__officeViewerPageThumbnailsCleanup")
+    })
+    return
+  }
   runtime.prepare_lazy_excel()
   runtime.prepare_excel()
   excel_reveal_hook(host, (sheet, row, column) => {
@@ -272,6 +281,7 @@ pub fn install_surface_interactions(
 pub fn dispose_surface_interactions(id : String) -> Unit {
   dispose_fit_width(id)
   if @dom.document().get_element_by_id(id).to_option() is Some(host) {
+    call_hook(host, "__officeViewerStrokesCleanup")
     call_hook(host, "__officeViewerPageThumbnailsCleanup")
     call_hook(host, "__officeViewerZoomCleanup")
     call_hook(host, "__officeViewerCleanup")

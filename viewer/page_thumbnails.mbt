@@ -19,7 +19,7 @@ pub fn render_page_thumbnails(
 }
 
 ///|
-/// Bind a thumbnail list to the current Word or ready PDF surface. The list
+/// Bind a thumbnail list to the current Word, PowerPoint or ready PDF surface. The list
 /// renders nearby pages, follows document scrolling, and supports click and
 /// arrow/Home/End navigation. Disabling it cancels pending thumbnail renders.
 /// Serve `public/page-thumbnails.js` beside the host entry, or set `runtime_url`.
@@ -31,7 +31,7 @@ pub fn page_thumbnails_command(
   runtime_url~ : String = "./page-thumbnails.js",
 ) -> @rabbita.Cmd {
   let kind = match config.kind {
-    Some(Word) => "word"
+    Some(Word) | Some(PowerPoint) => "word"
     Some(Pdf) => "pdf"
     _ => return dispose_page_thumbnails_command(config.surface_id)
   }
@@ -43,7 +43,7 @@ pub fn page_thumbnails_command(
         kind,
         config.document_file,
         enabled,
-        config.prefer_system_fonts,
+        config.prefer_system_fonts && config.kind != Some(PowerPoint),
         runtime_url,
       )
     },

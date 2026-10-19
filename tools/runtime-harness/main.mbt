@@ -40,6 +40,7 @@ fn main {
       @browser.annotation_avatar(@json.parse(value) catch { _ => Json::null() })
     },
   )
+  expose_font_runtime(@browser.prepare_font_runtime)
   expose_test_excel_renderer()
   expose_zoom_controls(
     @browser.configure_fit_width, @browser.install_pinch_zoom,
@@ -107,3 +108,6 @@ fn expose_test_excel_renderer() -> Unit {
     }
   })
 }
+
+///|
+extern "js" fn expose_font_runtime(prepare : (String) -> Unit) = "prepare => { globalThis.officeTest.prepareFonts = prepare; }"
