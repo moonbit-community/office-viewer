@@ -509,7 +509,19 @@ pub fn render_document(
           ),
           bytes,
         )
+        let warning = if layout.font_substitutions.is_empty() {
+          ""
+        } else {
+          "Font substitutions: " + layout.font_substitutions.join("; ")
+        }
         let output = StringBuilder()
+        if !warning.is_empty() {
+          output.write_string(
+            "<details class=\"office-font-substitutions\" style=\"margin:0 0 12px;padding:8px 12px;border:1px solid #e6c577;background:#fff9ed;color:#6e4c17;font:12px/1.5 system-ui,sans-serif;overflow-wrap:anywhere\"><summary>Font substitutions (\{layout.font_substitutions.length()})</summary>",
+          )
+          output.write_string(@xlsx2html.escape_html(warning))
+          output.write_string("</details>")
+        }
         output.write_string("<div class=\"word-pages pptx-pages\">")
         for index, part in layout.slide_parts {
           output.write_string(
@@ -523,11 +535,6 @@ pub fn render_document(
           output.write_string("</article>")
         }
         output.write_string("</div>")
-        let warning = if layout.font_substitutions.is_empty() {
-          ""
-        } else {
-          "Font substitutions: " + layout.font_substitutions.join("; ")
-        }
         Ok({
           kind,
           name,

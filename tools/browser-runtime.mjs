@@ -6,5 +6,6 @@ import { existsSync } from 'node:fs';
 const candidates = [
   '../_build/js/debug/build/tools/runtime-harness/runtime-harness.js',
   '../_build/js/debug/build/Lampese/office-viewer/tools/runtime-harness/runtime-harness.js',
+  '../_build/js/debug/build/moonbit-community/office-viewer/tools/runtime-harness/runtime-harness.js',
 ].map(path => new URL(path, import.meta.url));
 export const runtime = await readFile(candidates.find(path => existsSync(path)) || candidates[0], 'utf8');
