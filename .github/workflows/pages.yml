@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +24,19 @@ jobs:
         with:
           path: office-viewer
           persist-credentials: false
+      # Remove this source override after pinning the published PPTX renderer.
+      - name: Check out merged PPTX renderer
+        if: github.event_name == 'pull_request' && github.base_ref != 'main'
+        uses: actions/checkout@v4
+        with:
+          repository: moonbitlang/office.mbt
+          ref: c36ed4e2cf6667446b732ff23c5d9fa3a00d23e1
+          path: office.mbt
+          persist-credentials: false
+      - name: Use pinned renderer source before its Mooncakes release
+        if: github.event_name == 'pull_request' && github.base_ref != 'main'
+        run: |
+          printf '%s\n' 'members = [".", "../office.mbt/pagelayout"]' > moon.work
       - uses: actions/setup-node@v4
         with:
           node-version: '24'

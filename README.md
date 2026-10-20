@@ -37,16 +37,23 @@ unsupported formulas remain visibly marked as pending.
 Use the [official MoonBit toolchain](https://www.moonbitlang.com/download)
 `0.10.15+943464bfa` and Node.js 24. Dependencies resolve from the Mooncakes
 registry for released features. The PPTX branch additionally requires the
-`pagelayout/pptx` renderer from the matching `office.mbt` source branch until its
+`pagelayout/pptx` renderer from the merged `office.mbt` source until its
 next Mooncakes release; use a local `moon.work` to include the `pagelayout` module.
-The renderer is tracked in [office.mbt#654](https://github.com/moonbitlang/office.mbt/pull/654).
+The renderer was merged in [office.mbt#654](https://github.com/moonbitlang/office.mbt/pull/654).
 To reproduce this branch before that release, check out
-`Lampese/office.mbt` at `c78a48a8` beside this repository and create an untracked
+`moonbitlang/office.mbt` at `c36ed4e2cf6667446b732ff23c5d9fa3a00d23e1`
+beside this repository and create an untracked
 `moon.work` with paths relative to your checkouts:
 
 ```toml
 members = [".", "../office.mbt/pagelayout"]
 ```
+
+CI for stacked PRs uses that same pinned source. PRs targeting `main` and the
+deployed build resolve registry dependencies. Before merging this PPTX branch,
+update the `pagelayout` dependency to
+the published version containing the renderer and remove the CI source override;
+the registry-only build must pass without `moon.work`.
 
 ```sh
 moon update
