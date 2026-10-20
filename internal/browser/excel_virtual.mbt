@@ -569,7 +569,10 @@ fn place_lazy_cell(
       "1"
     },
   )
-  if computed_style(cell, "background-color") == "rgba(0, 0, 0, 0)" {
+  // Cells are still detached here, so computed style cannot supply a default.
+  if bounds.row > 0 &&
+    bounds.col > 0 &&
+    element_style(cell).get_property_value("background-color") == "" {
     style(cell, "background-color", "#fff")
   }
 }
