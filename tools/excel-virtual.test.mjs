@@ -8,19 +8,31 @@ const bytes = (await readFile(new URL('./fixtures/large-workbook.xlsx', import.m
 let browser;
 before(async () => { browser = await chromium.launch({headless:true}); });
 after(async () => { await browser?.close(); });
-async function setup(t) {
+async function setup(t, fillColor) {
   const page = await browser.newPage({viewport:{width:1200,height:900}});
   const errors=[]; page.on('pageerror', e=>errors.push(e.message));
   t.after(async()=>{await page.close(); assert.deepEqual(errors,[]);});
   await page.setContent(`<style>${styles} #document{width:900px;height:800px}</style><div id="document" class="surface sheet-surface"></div>`);
   await page.addScriptTag({content:runtime});
-  await page.evaluate(bytes=>{
+  await page.evaluate(({bytes,fillColor})=>{
     window.events=[];
     window.html=officeTest.renderExcel(bytes);
     if(window.html.startsWith('ERROR:')) throw new Error(window.html);
+    if(fillColor){
+      const content=document.createElement('template');content.innerHTML=window.html;
+      const metadata=content.content.querySelector('.office-virtual-workbook');
+      const model=JSON.parse(metadata.textContent);
+      // Exercise an unfilled style alongside an explicit fill in the virtual data.
+      model.styles['0']='font-weight:bold';
+      model.styles['1']=`background-color:${fillColor}`;
+      model.sheets.Sparse.cells.find(([row,col])=>row===1&&col===1)[3]=0;
+      model.sheets.Sparse.cells.push([1,2,'FILLED',1,'',false]);
+      metadata.textContent=JSON.stringify(model);
+      window.html=content.innerHTML;
+    }
     officeTest.install('document','excel','/docs/large.xlsx',window.html,v=>events.push(JSON.parse(v)),()=>{});
     officeTest.freeze('document');
-  },bytes);
+  },{bytes,fillColor});
   await frame(page);
   return page;
 }
@@ -44,6 +56,27 @@ test('all Excel rows and columns remain reachable with bounded cell nodes',async
   await page.locator('section[data-sheet="Sparse"] .office-sheet-viewport').evaluate(v=>{v.scrollTop=0;v.scrollLeft=0;});await frame(page);
   assert.equal(await page.locator('td[data-cell="A1"]').textContent(),'START');
   assert.equal(await page.locator('.truncated').count(),0);
+});
+test('unfilled frozen cells stay opaque while headers and authored fills retain their colors',async t=>{
+  const page=await setup(t,'#dce6f0');
+  await page.addStyleTag({content:'#document td { background-color: transparent; }'});
+  const sheet=page.locator('section[data-sheet="Sparse"]');
+  const colors=()=>sheet.locator('td[data-cell="A1"],td[data-cell="B1"],th').evaluateAll(cells=>({
+    unfilled:getComputedStyle(cells.find(c=>c.dataset.cell==='A1')).backgroundColor,
+    filled:getComputedStyle(cells.find(c=>c.dataset.cell==='B1')).backgroundColor,
+    headers:cells.filter(c=>c.tagName==='TH').map(c=>getComputedStyle(c).backgroundColor),
+  }));
+  const initial=await colors();
+  assert.equal(initial.unfilled,'rgb(255, 255, 255)');
+  assert.equal(initial.filled,'rgb(220, 230, 240)');
+  assert.ok(initial.headers.length>0);
+  assert.ok(initial.headers.every(color=>color!=='rgb(255, 255, 255)'&&color!=='rgba(0, 0, 0, 0)'));
+  await sheet.locator('.office-sheet-viewport').evaluate(v=>{v.scrollTop=2000;});
+  await frame(page);
+  const scrolled=await colors();
+  assert.equal(scrolled.unfilled,initial.unfilled);
+  assert.equal(scrolled.filled,initial.filled);
+  assert.ok(scrolled.headers.every(color=>initial.headers.includes(color)));
 });
 test('full-data search reveals cells beyond the previous row and column limits',async t=>{
   const page=await setup(t);
