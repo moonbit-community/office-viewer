@@ -111,7 +111,7 @@ in a document gutter and the optional Comments overview, and through
 `@viewer.read_annotations` or
 `RenderedDocument.annotations`. The `office.annotations.v1` contract preserves
 missing metadata and explicit support limits. Word navigation shows only proven
-paragraph context; Notes beyond preview bounds remain in the list and JSON.
+paragraph context; Notes retain their original worksheet coordinates, including outside the initial viewport.
 The gutter opens alongside the document when space permits; on narrow layouts,
 open its heading or a source marker to read comments and replies. Quote a whole
 comment or highlight any body text to capture an
@@ -136,10 +136,16 @@ nested tables, and paragraph-level section geometry still need engine work.
 
 Excel freezes authored rows/columns in a worksheet scroll area, including after
 zoom and worksheet switches. Split panes are not treated as frozen panes.
-Embedding hosts can set `render_document(..., max_rows=..., max_cols=...)`;
-the defaults are 1000 rows and 256 columns with a 262144-cell per-sheet ceiling.
-The table, formula metadata, and Notes preview flags use the same bounds.
-Notes outside the preview remain available in the annotation list.
+Large workbooks use a sparse, virtual grid. Scrolling reaches every stored row
+and column, including `XFD1048576`, without creating a dense DOM rectangle.
+Only the active worksheet's visible cells and overscan are mounted. Search
+uses the stored cell data and reveals matches outside the initial viewport.
+Merged cells, styles, row/column sizes, frozen panes, formula inspection,
+Notes navigation and selections retain source coordinates as nodes are recycled.
+The existing `max_rows` and `max_cols` arguments choose when to use the virtual
+grid; they no longer truncate the document. A 32768-cell total threshold also
+switches to virtualization. The workbook reader still applies its package and
+parsing resource limits; virtualization changes browser rendering, not parsing.
 See [rendering support](docs/rendering-support.md) for version boundaries and
 known limitations.
 

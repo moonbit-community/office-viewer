@@ -40,6 +40,7 @@ priv struct CellPointer {
   anchor : @dom.Element
   mut active : @dom.Element
   table : @dom.Element
+  anchor_bounds : CellBounds
 }
 
 ///|
@@ -61,6 +62,9 @@ priv struct SurfaceRuntime {
   cards : Array[AnnotationCard]
   markers : Array[MarkerGroup]
   bodies : Array[(@dom.Element, Annotation)]
+  lazy_sheets : Map[String, LazySheet]
+  mut lazy_styles : Json
+  mut lazy_query : String
   mut alive : Bool
   mut pointer : SurfacePointer?
   mut word_selection_payload : String?
@@ -127,6 +131,12 @@ fn SurfaceRuntime::dispose(self : SurfaceRuntime) -> Unit {
   dispose_fit_width(self.id)
   call_hook(self.host, "__officeViewerZoomCleanup")
   self.pointer = None
+  for sheet in self.lazy_sheets.values() {
+    if sheet.frame is Some(frame) {
+      @dom.window().cancel_animation_frame(frame)
+    }
+  }
+  self.lazy_sheets.clear()
   if self.layout_frame is Some(frame) {
     @dom.window().cancel_animation_frame(frame)
   }
@@ -142,7 +152,7 @@ fn SurfaceRuntime::dispose(self : SurfaceRuntime) -> Unit {
   for
     name in [
       "__officeViewerCleanup", "__officeFocusAnnotation", "__officeSelectAnnotation",
-      "__officeLayoutAnnotations", "__officeLayoutObjects",
+      "__officeLayoutAnnotations", "__officeLayoutObjects", "__officeRevealExcelCell",
     ] {
     self.host.remove_property(name)
   }
@@ -183,6 +193,9 @@ pub fn install_surface_interactions(
     cards: [],
     markers: [],
     bodies: [],
+    lazy_sheets: Map([]),
+    lazy_styles: Json::null(),
+    lazy_query: "",
     alive: true,
     pointer: None,
     word_selection_payload: None,
@@ -199,7 +212,11 @@ pub fn install_surface_interactions(
   set_callback(host, "__officeLayoutObjects", () => {
     runtime.layout_excel_objects()
   })
+  runtime.prepare_lazy_excel()
   runtime.prepare_excel()
+  excel_reveal_hook(host, (sheet, row, column) => {
+    runtime.reveal_lazy_cell(sheet, row, column)
+  })
   runtime.read_annotations()
   runtime.mount_annotations()
   runtime.install_selection()
@@ -216,6 +233,7 @@ pub fn install_surface_interactions(
     if event.to_keyboard_event() is Some(keyboard) {
       if keyboard.key() == "Escape" {
         runtime.clear_context()
+        runtime.cancel_pointer()
       }
     }
   })
@@ -282,6 +300,13 @@ pub fn select_surface_annotation(id : String, request : String) -> Bool {
 
 ///|
 pub fn clear_surface_selection(id : String) -> Unit {
+  // Clearing a previous feedback draft can run after the next pointerdown.
+  // Retire the old visual snapshot without cancelling that newer gesture.
+  if surfaces.get(id) is Some(runtime) {
+    for sheet in runtime.lazy_sheets.values() {
+      sheet.selection = None
+    }
+  }
   guard @dom.document().get_element_by_id(id).to_option() is Some(host) else {
     return
   }

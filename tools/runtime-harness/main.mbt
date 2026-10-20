@@ -40,6 +40,7 @@ fn main {
       @browser.annotation_avatar(@json.parse(value) catch { _ => Json::null() })
     },
   )
+  expose_test_excel_renderer()
   expose_zoom_controls(
     @browser.configure_fit_width, @browser.install_pinch_zoom,
   )
@@ -92,3 +93,17 @@ extern "js" fn expose_zoom_controls(
   fit : (String, String, Bool, (Int32) -> Unit) -> Unit,
   pinch : (String, String, Int32, Int32, (Int32) -> Unit) -> Unit,
 ) = "(fit, pinch) => { globalThis.officeTest.fit = fit; globalThis.officeTest.pinch = pinch; }"
+
+///|
+extern "js" fn expose_excel_renderer(render : (Bytes) -> String) =
+  #| render => { globalThis.officeTest.renderExcel = base64 => render(Uint8Array.from(atob(base64), c => c.charCodeAt(0))); }
+
+///|
+fn expose_test_excel_renderer() -> Unit {
+  expose_excel_renderer(bytes => {
+    match @viewer.render_document("large.xlsx", "/docs/large.xlsx", bytes) {
+      Ok(document) => document.surface_html
+      Err(error) => "ERROR: " + error
+    }
+  })
+}

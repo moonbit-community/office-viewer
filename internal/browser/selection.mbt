@@ -314,6 +314,9 @@ fn SurfaceRuntime::cancel_pointer(self : SurfaceRuntime) -> Unit {
     clear_cells(pointer.table)
   }
   self.pointer = None
+  for sheet in self.lazy_sheets.values() {
+    sheet.selection = None
+  }
 }
 
 ///|
@@ -338,7 +341,14 @@ fn SurfaceRuntime::install_selection(self : SurfaceRuntime) -> Unit {
       guard cell.closest("table") is Some(table) else { return }
       self.clear_context()
       event.prevent_default()
-      self.pointer = Some(ExcelPointer({ anchor: cell, active: cell, table, }))
+      self.pointer = Some(
+        ExcelPointer({
+          anchor: cell,
+          active: cell,
+          table,
+          anchor_bounds: cell_bounds(cell).unwrap(),
+        }),
+      )
       ignore(self.select_cells(cell, cell))
     } else if target.closest(".word-page") is Some(_) {
       self.clear_context()
@@ -366,7 +376,13 @@ fn SurfaceRuntime::install_selection(self : SurfaceRuntime) -> Unit {
       return
     }
     pointer.active = cell
-    ignore(self.select_cells(pointer.anchor, pointer.active))
+    ignore(
+      self.select_cells(
+        pointer.anchor,
+        pointer.active,
+        anchor_bounds=pointer.anchor_bounds,
+      ),
+    )
   })
   self.listen(@dom.window().as_event_target(), "pointerup", event => {
     if !self.alive {

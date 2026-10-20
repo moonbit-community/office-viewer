@@ -337,10 +337,8 @@ pub fn render_document(
   max_rows~ : Int32 = 1000,
   max_cols~ : Int32 = 256,
 ) -> Result[RenderedDocument, String] {
-  if max_rows < 1 || max_cols < 1 || max_rows > 262144 / max_cols {
-    return Err(
-      "Preview bounds must be positive and contain at most 262144 cells.",
-    )
+  if max_rows < 1 || max_cols < 1 {
+    return Err("Initial preview bounds must be positive.")
   }
   let kind = match document_kind(name) {
     Some(kind) => kind
@@ -421,23 +419,56 @@ pub fn render_document(
       }
       Excel => {
         let workbook = @mbtexcel.read(bytes.exact_view())
+        let lazy_grid = needs_virtual_excel(workbook, max_rows, max_cols)
         let annotations = bind_annotation_snapshot(
-          excel_annotations(name, file, workbook, max_rows~, max_cols~),
+          excel_annotations(
+            name,
+            file,
+            workbook,
+            max_rows=if lazy_grid { 1048576 } else { max_rows },
+            max_cols=if lazy_grid { 16384 } else { max_cols },
+          ),
           bytes,
         )
-        let formula_metadata = excel_formula_metadata(
-          workbook, max_rows, max_cols,
-        )
+        let model = if lazy_grid {
+          virtual_excel_model(workbook)
+        } else {
+          Json::null()
+        }
+        let formula_metadata = if lazy_grid {
+          "{}"
+        } else {
+          excel_formula_metadata(workbook, max_rows, max_cols)
+        }
         let freeze_metadata = excel_freeze_metadata(workbook)
         let object_metadata = excel_object_metadata(workbook)
-        normalize_formula_values_for_preview(workbook)
-        let rendered = render_excel_document(workbook, name, max_rows, max_cols)
+        if !lazy_grid {
+          normalize_formula_values_for_preview(workbook)
+        }
+        let rendered = render_excel_document(
+          workbook,
+          name,
+          if lazy_grid {
+            1
+          } else {
+            max_rows
+          },
+          if lazy_grid {
+            1
+          } else {
+            max_cols
+          },
+        )
         Ok({
           kind,
           name,
           file,
           surface_html: "<div class=\"sheet-document\">" +
-          extract_html_body(rendered) +
+          (if lazy_grid {
+            virtual_excel_shell(rendered, model)
+          } else {
+            extract_html_body(rendered)
+          }) +
           "<script type=\"application/json\" class=\"office-formula-metadata\">" +
           formula_metadata +
           "</script>" +
