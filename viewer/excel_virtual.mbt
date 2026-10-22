@@ -136,9 +136,12 @@ fn virtual_excel_shell(rendered : String, model : Json) -> String {
     for name, _ in sheets {
       let marker = "<section data-sheet=\"" +
         @xlsx2html.escape_html_attribute(name) +
-        "\">"
+        "\""
       guard html.find(marker) is Some(start) else { continue }
-      let begin = start + marker.length()
+      let attributes = start + marker.length()
+      // The renderer may append freeze settings after the worksheet name.
+      guard html[attributes:].find(">") is Some(tag_end) else { continue }
+      let begin = attributes + tag_end + 1
       guard html[begin:].find("</section>") is Some(length) else { continue }
       let section = html[begin:begin + length].to_owned()
       let section = match (section.find("<table>"), section.find("</table>")) {
