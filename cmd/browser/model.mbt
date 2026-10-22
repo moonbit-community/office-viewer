@@ -2,6 +2,7 @@
 enum DocumentKind {
   Word
   Excel
+  PowerPoint
   Pdf
 } derive(Eq)
 

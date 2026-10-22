@@ -4,6 +4,7 @@ package "moonbit-community/office-viewer/viewer"
 import {
   "moonbit-community/rabbita/cmd",
   "moonbit-community/rabbita/html",
+  "moonbitlang/pagelayout/fonts",
 }
 
 // Values
@@ -57,7 +58,7 @@ pub fn pinch_zoom_command(SurfaceConfig, (Int) -> @cmd.Cmd, min_zoom? : Int, max
 
 pub fn read_annotations(String, String, Bytes) -> Result[Json, String]
 
-pub fn render_document(String, String, Bytes, max_rows? : Int, max_cols? : Int) -> Result[RenderedDocument, String]
+pub fn render_document(String, String, Bytes, max_rows? : Int, max_cols? : Int, fonts? : @fonts.FontRegistry, font_fallbacks? : Map[String, Array[String]]) -> Result[RenderedDocument, String]
 
 pub fn render_page_thumbnails(String, page_label? : String, unavailable_label? : String) -> @html.Html
 
@@ -75,6 +76,7 @@ pub fn visual_command(SurfaceConfig) -> @cmd.Cmd
 pub(all) enum DocumentKind {
   Word
   Excel
+  PowerPoint
   Pdf
 } derive(Eq)
 pub fn DocumentKind::equal(Self, Self) -> Bool

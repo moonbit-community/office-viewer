@@ -169,3 +169,11 @@ extern "js" fn excel_reveal_hook(
   reveal : (String, Int32, Int32) -> Bool,
 ) =
   #| (node, reveal) => { node.__officeRevealExcelCell = reveal; }
+
+///|
+extern "js" fn svg_screen_matrix(
+  node : @dom.Element,
+) -> @js.Nullable[@js.Value] = "node => typeof node.getScreenCTM === 'function' ? node.getScreenCTM() : null"
+
+///|
+extern "js" fn display_pixel_ratio() -> Double = "() => window.devicePixelRatio || 1"

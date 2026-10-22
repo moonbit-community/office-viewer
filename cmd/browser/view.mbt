@@ -34,6 +34,7 @@ fn tool_button(
 fn kind_label(kind : DocumentKind?) -> String {
   match kind {
     Some(Word) => "Word"
+    Some(PowerPoint) => "PowerPoint"
     Some(Excel) => "Excel"
     Some(Pdf) => "PDF"
     None => ""
@@ -44,6 +45,7 @@ fn kind_label(kind : DocumentKind?) -> String {
 fn surface_class(model : Model) -> String {
   match model.kind {
     Some(Word) => "surface-wrap word-mode"
+    Some(PowerPoint) => "surface-wrap pptx-mode"
     Some(Excel) => "surface-wrap sheet-mode"
     Some(Pdf) => "surface-wrap pdf-mode"
     None => "surface-wrap"
@@ -62,6 +64,13 @@ fn surface(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
       emit(DropRequested(event))
     })
   div(id="surface-wrap", class=surface_class(model), attrs=drop_attrs, [
+    if model.kind == Some(PowerPoint) {
+      @html.aside(class="presentation-slide-rail", [
+        @viewer.render_page_thumbnails("presentation-slide-list"),
+      ])
+    } else {
+      @html.nothing
+    },
     @viewer.render_surface(surface_config(model)),
   ])
 }
@@ -552,14 +561,14 @@ fn view(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
         span(class="brand-mark", "OV"),
         div(class="brand-copy", [
           span(class="brand-title", "Office Viewer"),
-          span(class="brand-subtitle", "DOCX / XLSX / PDF"),
+          span(class="brand-subtitle", "DOCX / XLSX / PPTX / PDF"),
         ]),
       ]),
       div(class="file-actions", [
         input(
           input_type=File,
           id="file-input",
-          accept=".docx,.xlsx,.pdf",
+          accept=".docx,.xlsx,.pptx,.pdf",
           hidden=true,
           on_change=emit.map(_ => FileSelected),
         ),
@@ -579,7 +588,7 @@ fn view(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
       div(class="view-actions", [
         button(
           class=system_font_button_class(model),
-          hidden=model.kind == Some(Pdf),
+          hidden=model.kind == Some(Pdf) || model.kind == Some(PowerPoint),
           title="Prefer installed fonts",
           attrs=@html.Attrs::build().aria_pressed(
             if model.prefer_system_fonts {
@@ -634,6 +643,7 @@ fn view(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
         button(
           class="button icon",
           title="Selection",
+          hidden=model.kind == Some(PowerPoint),
           attrs=@html.Attrs::build()
             .aria_label("Selection")
             .aria_controls("selection-panel")
@@ -647,7 +657,7 @@ fn view(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
           } else {
             "button comments-toggle"
           },
-          hidden=model.kind == Some(Pdf),
+          hidden=model.kind == Some(Pdf) || model.kind == Some(PowerPoint),
           attrs=@html.Attrs::build()
             .aria_controls("comments-panel")
             .aria_expanded(if model.comments_open { "true" } else { "false" }),
@@ -662,11 +672,11 @@ fn view(model : Model, emit : @rabbita.Emit[Msg]) -> Html {
       span(class="status-selection", model.status),
       span(
         class="status-comments",
-        hidden=model.kind == Some(Pdf),
+        hidden=model.kind == Some(Pdf) || model.kind == Some(PowerPoint),
         "\{annotation_count(model)} comments / notes",
       ),
       span(
-        "\{model.item_count} \{if model.kind is Some(Excel) { "sheets" } else { "pages" }}",
+        "\{model.item_count} \{if model.kind is Some(Excel) { "sheets" } else if model.kind is Some(PowerPoint) { "slides" } else { "pages" }}",
       ),
     ]),
     div(class="viewer-workspace", [

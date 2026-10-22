@@ -747,3 +747,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   .file-actions .primary { white-space: nowrap; min-width: 102px; }
   .status-file { min-width: 0; flex: 1; }
 }
+
+.surface-wrap.pptx-mode {
+  display: grid;
+  grid-template-columns: 144px minmax(0, 1fr);
+  overflow: hidden;
+}
+.presentation-slide-rail { overflow: auto; padding: 12px 4px; border-right: 1px solid var(--line); }
+.pptx-mode > .office-viewer-surface { min-width: 0; min-height: 0; overflow: auto; padding: 24px; }
+@media (max-width: 700px) { .surface-wrap.pptx-mode { grid-template-columns: 100px minmax(0, 1fr); } }

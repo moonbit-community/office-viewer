@@ -1,0 +1,4 @@
+The PPTX renderer includes an MPL-2.0 MoonBit adaptation of mtx-decompressor 1.8.0 by ChristopherVR.
+Upstream: https://github.com/ChristopherVR/mtx-decompressor
+Adaptation source: https://github.com/Lampese/office.mbt/tree/c78a48a8/pagelayout/pptx/mtx
+See MTX-LICENSE.txt for its license; other viewer code retains its own license.

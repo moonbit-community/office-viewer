@@ -5,6 +5,8 @@ fn document_kind(name : String) -> DocumentKind? {
     Some(Word)
   } else if lower.has_suffix(".xlsx") {
     Some(Excel)
+  } else if lower.has_suffix(".pptx") {
+    Some(PowerPoint)
   } else if lower.has_suffix(".pdf") {
     Some(Pdf)
   } else {
@@ -24,7 +26,8 @@ fn mock_document_file(name : String) -> String {
 fn parse_document(payload : FilePayload) -> Result[LoadedDocument, String] {
   let kind = match document_kind(payload.name) {
     Some(kind) => kind
-    None => return Err("Only .docx, .xlsx, and .pdf files are supported.")
+    None =>
+      return Err("Only .docx, .xlsx, .pptx, and .pdf files are supported.")
   }
   if kind == Pdf {
     return Ok({

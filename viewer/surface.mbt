@@ -36,6 +36,8 @@ pub fn render_surface(config : SurfaceConfig) -> @html.Html {
   } else {
     let class_name = match config.kind {
       Some(Word) => "surface office-viewer-surface word-surface word-mode"
+      Some(PowerPoint) =>
+        "surface office-viewer-surface word-surface presentation-mode"
       Some(Excel) => "surface office-viewer-surface sheet-surface sheet-mode"
       Some(Pdf) => "surface office-viewer-surface pdf-surface pdf-mode"
       None => "surface office-viewer-surface"
@@ -60,6 +62,7 @@ pub fn interactions_command(
   @cmd.custom_cmd(
     scheduler => {
       if config.kind == Some(Pdf) {
+        dispose_surface_interactions(config.surface_id)
         return
       }
       install_surface_interactions(
@@ -108,7 +111,10 @@ pub fn visual_command(config : SurfaceConfig) -> @rabbita.Cmd {
       } else {
         set_surface_zoom(config.surface_id, config.zoom.to_double() / 100.0)
         prepare_font_runtime(config.surface_id)
-        set_system_font_mode(config.surface_id, config.prefer_system_fonts)
+        set_system_font_mode(
+          config.surface_id,
+          config.prefer_system_fonts && config.kind != Some(PowerPoint),
+        )
         apply_search(config.surface_id, config.query)
         refresh_excel_freeze(config.surface_id)
       }
@@ -121,6 +127,7 @@ pub fn visual_command(config : SurfaceConfig) -> @rabbita.Cmd {
 fn surface_kind(kind : DocumentKind?) -> String {
   match kind {
     Some(Word) => "word"
+    Some(PowerPoint) => "pptx"
     Some(Excel) => "excel"
     Some(Pdf) => "pdf"
     None => ""

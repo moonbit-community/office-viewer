@@ -4,6 +4,11 @@ fn surface_command(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Cmd {
     @viewer.interactions_command(surface_config(model), selection => {
       emit(SelectionChanged(selection))
     }),
+    @viewer.page_thumbnails_command(
+      surface_config(model),
+      "presentation-slide-list",
+      enabled=model.kind == Some(PowerPoint),
+    ),
     @viewer.pinch_zoom_command(
       surface_config(model),
       zoom => emit(ZoomChanged(zoom.to_string())),
@@ -33,6 +38,7 @@ fn surface_config(model : Model) -> @viewer.SurfaceConfig {
     kind: model.kind.map(kind => {
       match kind {
         Word => @viewer.Word
+        PowerPoint => @viewer.PowerPoint
         Excel => @viewer.Excel
         Pdf => @viewer.Pdf
       }
@@ -86,7 +92,7 @@ fn file_ready(
       let next = {
         ..model,
         kind: Some(document.kind),
-        fit_width: document.kind == Word,
+        fit_width: document.kind == Word || document.kind == PowerPoint,
         zoom: 100,
         file_name: document.name,
         document_file: document.file,
@@ -94,7 +100,12 @@ fn file_ready(
         item_count: document.item_count,
         warning: document.warning,
         annotations: document.annotations,
-        comments_open: if pdf {
+        inspector_open: if document.kind == PowerPoint {
+          false
+        } else {
+          model.inspector_open
+        },
+        comments_open: if pdf || document.kind == PowerPoint {
           false
         } else {
           model.comments_open
