@@ -1,6 +1,6 @@
 import {
-  "moonbit-community/office-viewer/internal/browser",
-  "moonbit-community/office-viewer/viewer",
+  "Lampese/office-viewer/internal/browser",
+  "Lampese/office-viewer/viewer",
   "moonbit-community/rabbita",
   "moonbit-community/rabbita/html",
   "moonbit-community/rabbita/dom",

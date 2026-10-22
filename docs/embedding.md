@@ -1,6 +1,6 @@
 # Embedding the viewer surface
 
-The `moonbit-community/office-viewer/viewer` package provides a JS/Rabbita
+The `Lampese/office-viewer/viewer` package provides a JS/Rabbita
 surface. The host owns file bytes, the canonical file path, application state,
 toolbars, and the policy for sending selections to an agent.
 
