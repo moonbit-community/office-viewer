@@ -8,13 +8,13 @@ import {
 }
 
 // Values
-pub fn annotation_selection(Json, start_utf16? : Int, end_utf16? : Int, scope? : String) -> Result[Json, String]
+pub fn annotation_selection(Json, start_utf16? : Int32, end_utf16? : Int32, scope? : String) -> Result[Json, String]
 
 pub fn clear_selection_command(String) -> @cmd.Cmd
 
-pub let default_selection_preview_utf16 : Int
+pub let default_selection_preview_utf16 : Int32
 
-pub let default_selection_source_anchors : Int
+pub let default_selection_source_anchors : Int32
 
 pub fn dispose_interactions_command(String) -> @cmd.Cmd
 
@@ -22,7 +22,7 @@ pub fn dispose_page_thumbnails_command(String) -> @cmd.Cmd
 
 pub fn document_kind(String) -> DocumentKind?
 
-pub fn fit_width_command(String, DocumentKind?, (Int) -> @cmd.Cmd, enabled? : Bool) -> @cmd.Cmd
+pub fn fit_width_command(String, DocumentKind?, (Int32) -> @cmd.Cmd, enabled? : Bool) -> @cmd.Cmd
 
 pub fn focus_annotation_command(String, Json, on_result? : (Bool) -> @cmd.Cmd) -> @cmd.Cmd
 
@@ -36,7 +36,7 @@ pub fn materialize_selection_deferred(String) -> Result[String, String]
 
 pub fn materialize_selection_full(String) -> Result[String, String]
 
-pub fn materialize_selection_preview(String, Int) -> Result[String, String]
+pub fn materialize_selection_preview(String, Int32) -> Result[String, String]
 
 pub fn page_thumbnails_command(SurfaceConfig, String, enabled? : Bool, runtime_url? : String) -> @cmd.Cmd
 
@@ -46,19 +46,19 @@ pub fn pdf_find_command(String, Bool) -> @cmd.Cmd
 
 pub fn pdf_fit_width_command(String) -> @cmd.Cmd
 
-pub fn pdf_page_command(String, Int) -> @cmd.Cmd
+pub fn pdf_page_command(String, Int32) -> @cmd.Cmd
 
 pub fn pdf_password_command(String, String) -> @cmd.Cmd
 
-pub fn pdf_rotation_command(String, Int) -> @cmd.Cmd
+pub fn pdf_rotation_command(String, Int32) -> @cmd.Cmd
 
 pub fn pdf_surface_html() -> String
 
-pub fn pinch_zoom_command(SurfaceConfig, (Int) -> @cmd.Cmd, min_zoom? : Int, max_zoom? : Int) -> @cmd.Cmd
+pub fn pinch_zoom_command(SurfaceConfig, (Int32) -> @cmd.Cmd, min_zoom? : Int32, max_zoom? : Int32) -> @cmd.Cmd
 
 pub fn read_annotations(String, String, Bytes) -> Result[Json, String]
 
-pub fn render_document(String, String, Bytes, max_rows? : Int, max_cols? : Int, fonts? : @fonts.FontRegistry, font_fallbacks? : Map[String, Array[String]]) -> Result[RenderedDocument, String]
+pub fn render_document(String, String, Bytes, max_rows? : Int32, max_cols? : Int32, fonts? : @fonts.FontRegistry, font_fallbacks? : Map[String, Array[String]]) -> Result[RenderedDocument, String]
 
 pub fn render_page_thumbnails(String, page_label? : String, unavailable_label? : String) -> @html.Html
 
@@ -87,7 +87,7 @@ pub(all) struct RenderedDocument {
   name : String
   file : String
   surface_html : String
-  item_count : Int
+  item_count : Int32
   warning : String
   annotations : Json
 } derive(Eq)
@@ -104,8 +104,8 @@ pub fn SelectionMaterializationMode::not_equal(Self, Self) -> Bool
 
 pub(all) struct SelectionMaterializationOptions {
   mode : SelectionMaterializationMode
-  max_preview_utf16 : Int
-  max_source_anchors : Int
+  max_preview_utf16 : Int32
+  max_source_anchors : Int32
 } derive(Eq)
 pub fn SelectionMaterializationOptions::equal(Self, Self) -> Bool
 pub fn SelectionMaterializationOptions::not_equal(Self, Self) -> Bool
@@ -115,7 +115,7 @@ pub(all) struct SurfaceConfig {
   kind : DocumentKind?
   document_file : String
   surface_html : String
-  zoom : Int
+  zoom : Int32
   query : String
   prefer_system_fonts : Bool
 } derive(Eq)

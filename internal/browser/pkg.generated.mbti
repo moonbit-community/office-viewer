@@ -12,7 +12,7 @@ pub fn apply_search(String, String) -> Unit
 
 pub fn clear_surface_selection(String) -> Unit
 
-pub fn configure_fit_width(String, String, Bool, (Int) -> Unit) -> Unit
+pub fn configure_fit_width(String, String, Bool, (Int32) -> Unit) -> Unit
 
 pub fn dispose_fit_width(String) -> Unit
 
@@ -22,9 +22,9 @@ pub fn focus_surface_annotation(String, String) -> Bool
 
 pub fn install_excel_freeze(String) -> Unit
 
-pub fn install_pinch_zoom(String, String, Int, Int, (Int) -> Unit) -> Unit
+pub fn install_pinch_zoom(String, String, Int32, Int32, (Int32) -> Unit) -> Unit
 
-pub fn install_surface_interactions(String, String, String, String, (String) -> Unit, (String, Int, Int, String) -> Unit) -> Unit
+pub fn install_surface_interactions(String, String, String, String, (String) -> Unit, (String, Int32, Int32, String) -> Unit) -> Unit
 
 pub fn prepare_font_runtime(String) -> Unit
 
